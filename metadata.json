@@ -1,0 +1,6 @@
+{
+  "name": "The Green Medic",
+  "description": "Real-time botanical classification and medicinal leaf analysis system powered by Google Teachable Machine.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
