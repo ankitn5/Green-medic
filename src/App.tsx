@@ -21,8 +21,24 @@ import {
   QrCode,
   Scan,
   CheckCircle2,
-  Loader2,
+  LogIn,
+  LogOut,
+  Cloud,
+  ArrowDown,
 } from 'lucide-react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import {
+  auth,
+  signInWithGoogle,
+  signOutUser,
+  ensureUserProfileAndSeedData,
+  subscribeToUserTelemetry,
+  saveScanLogToFirestore,
+  updateScanNoteInFirestore,
+  toggleScanBookmarkInFirestore,
+  updateDailyProgressInFirestore,
+  resetUserLogsInFirestore,
+} from './firebase';
 import {
   BOTANICAL_CLASSES,
   BotanicalClassProfile,
@@ -45,7 +61,6 @@ import {
   TMCustomModel,
   triggerHaptic,
 } from './services/teachableMachine';
-import { detectPlantWithAI, convertDeepResponseToProfile } from './services/deepPlantDetector';
 import { detectQrFromCanvas } from './services/qrScanner';
 import { BotanicalActionCard } from './components/BotanicalActionCard';
 import { ProgressDashboard } from './components/ProgressDashboard';
@@ -53,6 +68,7 @@ import { EnvironmentalImpactSection } from './components/EnvironmentalImpactSect
 import { SpecimenDetailModal } from './components/SpecimenDetailModal';
 import { BotanicalQrModal } from './components/BotanicalQrModal';
 import { SampleQrTagsModal } from './components/SampleQrTagsModal';
+import { StripeWaveBackground } from './components/StripeWaveBackground';
 import { sanitizeText } from './utils/textSanitizer';
 
 export default function App() {
@@ -81,17 +97,17 @@ export default function App() {
     null
   );
 
-  // Deep Optical AI Detection State
-  const [isDeepAnalyzing, setIsDeepAnalyzing] = useState<boolean>(false);
-  const [deepAnalysisFeedback, setDeepAnalysisFeedback] = useState<string | null>(null);
-  const [lastDeepScanTime, setLastDeepScanTime] = useState<number>(0);
-
   // QR Code Scanner & Pot Tag Modal State
   const [detectedQrData, setDetectedQrData] = useState<string | null>(null);
   const [inspectingQrSpecimen, setInspectingQrSpecimen] = useState<BotanicalClassProfile | null>(null);
   const [qrModalSpecimen, setQrModalSpecimen] = useState<BotanicalClassProfile | null>(null);
   const [showSampleQrModal, setShowSampleQrModal] = useState<boolean>(false);
   const [activeNavSection, setActiveNavSection] = useState<'scanner' | 'specimens' | 'impact' | 'analytics'>('scanner');
+
+  const navigateToPage = (page: 'scanner' | 'specimens' | 'impact' | 'analytics') => {
+    setActiveNavSection(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Real-Time Classification State
   const [rawPredictions, setRawPredictions] = useState<RawPrediction[]>([
@@ -122,7 +138,12 @@ export default function App() {
   const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number>(0);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
-  // Progress & Plant Health Telemetry State (persisted in localStorage)
+  // Firebase Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+
+  // Progress & Plant Health Telemetry State (synced with Firestore when signed in, localStorage fallback)
   const [dailyProgress, setDailyProgress] = useState<DailyEngagementPoint[]>(() => {
     try {
       const saved = localStorage.getItem('the_green_medic_progress');
@@ -153,7 +174,82 @@ export default function App() {
   const lastLoggedTimeRef = useRef<number>(0);
   const lastTriggeredSpeciesRef = useRef<string | null>(null);
   const lastQrDetectTimeRef = useRef<number>(0);
-  const deepScanHoldUntilRef = useRef<number>(0);
+
+  // Listen to Firebase Auth state & attach Firestore listeners when authenticated
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      setAuthReady(true);
+      if (user) {
+        try {
+          await ensureUserProfileAndSeedData(user);
+        } catch (err) {
+          console.error('Error initializing user profile in Firestore:', err);
+        }
+      }
+    });
+    return () => unsubAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !currentUser) return;
+    const unsubTelemetry = subscribeToUserTelemetry(
+      currentUser.uid,
+      (logs) => setScanLogs(logs),
+      (points) => setDailyProgress(points)
+    );
+    return () => unsubTelemetry();
+  }, [authReady, currentUser]);
+
+  // Scroll-spy for mobile river navigation
+  useEffect(() => {
+    const sectionIds: Array<'scanner' | 'specimens' | 'impact' | 'analytics'> = [
+      'scanner',
+      'specimens',
+      'impact',
+      'analytics',
+    ];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const id = entry.target.id as 'scanner' | 'specimens' | 'impact' | 'analytics';
+            if (sectionIds.includes(id)) {
+              setActiveNavSection(id);
+            }
+          }
+        }
+      },
+      { rootMargin: '-25% 0px -55% 0px', threshold: 0.05 }
+    );
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    if (authLoading) return;
+    setAuthLoading(true);
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      console.error('Google Sign-In error:', err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+    } catch (err) {
+      console.error('Sign-Out error:', err);
+    }
+  };
 
   // Sync state to localStorage
   useEffect(() => {
@@ -271,8 +367,11 @@ export default function App() {
       triggerHaptic([45, 60, 45]);
 
       const timeStr = new Date().toTimeString().slice(0, 8);
+      const scanId = currentUser
+        ? `${currentUser.uid}_SCAN-${Date.now()}`
+        : `SCAN-${1049 + scanLogs.length}`;
       const newEntry: ScanLogEntry = {
-        id: `SCAN-${1049 + scanLogs.length}`,
+        id: scanId,
         timestamp: timeStr,
         specimenId: profile.id,
         specimenName: profile.name,
@@ -282,12 +381,19 @@ export default function App() {
         chlorophyllSpad: Number((spad || 44.2).toFixed(1)),
         laminaIntegrity: Number((integrity || 94.8).toFixed(1)),
         audioSpoken: ttsEnabled,
-        sourceMode: 'Live Webcam',
+        sourceMode:
+          inputMode === 'upload' ? 'Specimen Calibration' : 'Live Webcam',
         notes: modeNote,
         bookmarked: false,
       };
 
       setScanLogs((prev) => [newEntry, ...prev.slice(0, 24)]);
+      if (currentUser) {
+        saveScanLogToFirestore(currentUser.uid, newEntry).catch((err) =>
+          console.error('Failed to persist scan log:', err)
+        );
+      }
+
       setDailyProgress((prev) => {
         const next = [...prev];
         const todayIdx = next.length - 1;
@@ -298,10 +404,15 @@ export default function App() {
           (today.avgConfidence * 0.9 + confidence * 0.1).toFixed(1)
         );
         next[todayIdx] = today;
+        if (currentUser) {
+          updateDailyProgressInFirestore(currentUser.uid, today).catch((err) =>
+            console.error('Failed to persist daily progress:', err)
+          );
+        }
         return next;
       });
     },
-    [scanLogs.length, ttsEnabled]
+    [scanLogs.length, ttsEnabled, currentUser, inputMode]
   );
 
   // 4. Mobile Camera Lifecycle Management
@@ -403,83 +514,7 @@ export default function App() {
     };
   }, [startWebcam]);
 
-  // 5. Deep Optical AI Detection Trigger
-  const handleRunDeepAIScan = async () => {
-    if (isDeepAnalyzing) return;
-    const canvas = inferenceCanvasRef.current;
-    if (!canvas) return;
-
-    setIsDeepAnalyzing(true);
-    setDeepAnalysisFeedback(null);
-    triggerHaptic(40);
-
-    try {
-      // Capture current high-res frame from canvas or video
-      let imageDataUrl = '';
-      if (inputMode === 'upload' && uploadedPreviewUrl) {
-        imageDataUrl = uploadedPreviewUrl;
-      } else {
-        imageDataUrl = canvas.toDataURL('image/jpeg', 0.88);
-      }
-
-      const aiResult = await detectPlantWithAI(imageDataUrl, 'image/jpeg');
-
-      if (aiResult.category === 'background' || aiResult.detectedClass === 'background') {
-        setDeepAnalysisFeedback('Non-botanical scene or background detected. Please focus on a single leaf.');
-        setCompetitionClasses(
-          BOTANICAL_CLASSES.map((c) => ({
-            id: c.id,
-            name: c.name,
-            scientificName: c.scientificName,
-            category: c.category,
-            confidence: c.id === 'background' ? 98.0 : 0.5,
-            rawSourceLabel: 'Background Filter',
-          }))
-        );
-      } else {
-        const { profile, confidence } = convertDeepResponseToProfile(aiResult, BOTANICAL_CLASSES);
-        setDeepAnalysisFeedback(`Identified ${profile.name} (${confidence.toFixed(1)}%) via Deep Optical AI.`);
-        setSpectralSpad(aiResult.leafHealth?.spadEstimate || 44.0);
-        setLaminaHealth(aiResult.leafHealth?.vitalityIndex || 95.0);
-        setVitalityState(aiResult.leafHealth?.status || 'Optimal Turgor');
-
-        // Update competition classes with deep detection at top
-        setCompetitionClasses((prev) =>
-          prev.map((c) => {
-            if (c.id === profile.id) {
-              return { ...c, confidence: Math.max(90.0, confidence) };
-            }
-            if (c.id === 'background') {
-              return { ...c, confidence: Math.max(1.0, 100 - confidence) };
-            }
-            return { ...c, confidence: Math.min(5.0, c.confidence * 0.1) };
-          })
-        );
-
-        deepScanHoldUntilRef.current = Date.now() + 8000;
-        setLastDeepScanTime(Date.now());
-        recordVerifiedScan(
-          profile,
-          confidence,
-          aiResult.leafHealth?.spadEstimate || 44.0,
-          aiResult.leafHealth?.vitalityIndex || 95.0,
-          'Deep AI Vision Scan'
-        );
-
-        if (ttsEnabled) {
-          speakProfile(profile, true);
-        }
-      }
-    } catch (err: unknown) {
-      setDeepAnalysisFeedback(
-        err instanceof Error ? err.message : 'Deep optical analysis failed.'
-      );
-    } finally {
-      setIsDeepAnalyzing(false);
-    }
-  };
-
-  // 6. Real-Time Inference Loop (Botanical & QR Detection)
+  // 5. Real-Time Inference Loop (Teachable Machine Botanical Vision & QR Detection)
   useEffect(() => {
     let animationFrameId: number;
     let isCancelled = false;
@@ -521,13 +556,7 @@ export default function App() {
                 }
               }
             } else {
-              // If deep AI scan is holding verified result, keep display locked
-              if (Date.now() < deepScanHoldUntilRef.current) {
-                animationFrameId = window.requestAnimationFrame(runInferenceLoop);
-                return;
-              }
-
-              // Real-time botanical vision inference
+              // Real-time Teachable Machine botanical vision inference
               const spectral = analyzeCanvasSpectralFeatures(canvas);
               setSpectralSpad(spectral.chlorophyllSpadEstimate);
               setLaminaHealth(spectral.laminaIntegrityEstimate);
@@ -706,24 +735,44 @@ export default function App() {
     setDailyProgress(INITIAL_DAILY_PROGRESS);
     localStorage.removeItem('the_green_medic_logs');
     localStorage.removeItem('the_green_medic_progress');
+    if (currentUser) {
+      resetUserLogsInFirestore(currentUser.uid).catch((err) =>
+        console.error('Failed to reset Firestore logs:', err)
+      );
+    }
   };
 
   const handleUpdateNote = (id: string, note: string) => {
     setScanLogs((prev) =>
       prev.map((item) => (item.id === id ? { ...item, notes: note } : item))
     );
+    if (currentUser) {
+      updateScanNoteInFirestore(id, note).catch((err) =>
+        console.error('Failed to update note in Firestore:', err)
+      );
+    }
   };
 
   const handleToggleBookmark = (id: string) => {
+    const target = scanLogs.find((item) => item.id === id);
+    const nextBookmarked = target ? !target.bookmarked : true;
     setScanLogs((prev) =>
       prev.map((item) =>
-        item.id === id ? { ...item, bookmarked: !item.bookmarked } : item
+        item.id === id ? { ...item, bookmarked: nextBookmarked } : item
       )
     );
+    if (currentUser) {
+      toggleScanBookmarkInFirestore(id, nextBookmarked).catch((err) =>
+        console.error('Failed to toggle bookmark in Firestore:', err)
+      );
+    }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAFAFA] text-slate-900 pb-16 md:pb-0">
+    <div className="relative min-h-screen flex flex-col bg-[#FAFAFA] text-slate-900 pb-16 md:pb-0">
+      {/* Stripe Flowing Wave Background */}
+      <StripeWaveBackground />
+
       {/* Hidden 224x224 center-cropped neural inference canvas */}
       <canvas
         ref={inferenceCanvasRef}
@@ -757,53 +806,120 @@ export default function App() {
       />
 
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 py-3.5">
-        <div className="max-w-[1340px] mx-auto flex items-center justify-between gap-4 md:gap-8">
-          <a
-            href="#scanner"
-            className="text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 flex items-center gap-2"
+      <header className="sticky top-0 z-30 h-14 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 flex items-center">
+        <div className="max-w-[1340px] w-full mx-auto flex items-center justify-between gap-3 md:gap-6">
+          <button
+            type="button"
+            onClick={() => navigateToPage('scanner')}
+            className="text-base sm:text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 flex items-center gap-2 cursor-pointer text-left"
           >
             <span>The Green Medic</span>
-          </a>
+          </button>
 
-          {/* Desktop Navigation Links */}
+          {/* Desktop Multi-Page Navigation Tabs */}
           <nav
-            className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-500"
+            className="hidden md:flex items-center gap-1 p-1 bg-slate-100/90 rounded-2xl border border-slate-200/80 text-xs font-semibold"
             aria-label="Primary Navigation"
           >
-            <a
-              href="#scanner"
-              className="hover:text-slate-900 transition-colors whitespace-nowrap shrink-0"
+            <button
+              type="button"
+              onClick={() => navigateToPage('scanner')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeNavSection === 'scanner'
+                  ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              Scanner
-            </a>
-            <a
-              href="#specimens"
-              className="hover:text-slate-900 transition-colors whitespace-nowrap shrink-0"
+              <Camera className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Scanner</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToPage('specimens')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeNavSection === 'specimens'
+                  ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              Specimens
-            </a>
-            <a
-              href="#impact"
-              className="hover:text-slate-900 transition-colors whitespace-nowrap shrink-0"
+              <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Species Guide</span>
+              <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] rounded-full">5</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToPage('impact')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeNavSection === 'impact'
+                  ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              Impact
-            </a>
-            <a
-              href="#analytics"
-              className="hover:text-slate-900 transition-colors whitespace-nowrap shrink-0"
+              <Globe className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Eco Impact</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToPage('analytics')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeNavSection === 'analytics'
+                  ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              Analytics
-            </a>
+              <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Field Log</span>
+              {scanLogs.length > 0 && (
+                <span className="px-1.5 py-0.2 bg-slate-200 text-slate-700 text-[10px] rounded-full">
+                  {scanLogs.length}
+                </span>
+              )}
+            </button>
           </nav>
 
-          {/* Primary Action Button */}
+          {/* Auth & Primary Action Controls */}
           <div className="flex items-center gap-2 shrink-0">
+            {currentUser ? (
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div
+                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-xs text-emerald-900"
+                  title="Cloud Sync Active"
+                >
+                  <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="font-medium max-w-[110px] truncate">
+                    {currentUser.displayName || 'Researcher'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="min-h-[40px] px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden md:inline">Sign Out</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={authLoading}
+                className="min-h-[40px] px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60"
+              >
+                <LogIn className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="sm:hidden">{authLoading ? '...' : 'Sign In'}</span>
+                <span className="hidden sm:inline">
+                  {authLoading ? 'Signing in...' : 'Google Sign-In'}
+                </span>
+              </button>
+            )}
+
             {webcamActive ? (
               <button
                 type="button"
                 onClick={stopWebcam}
-                className="min-h-[40px] px-3.5 md:px-4 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="min-h-[40px] px-3 sm:px-4 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Stop Camera
               </button>
@@ -811,7 +927,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => startWebcam()}
-                className="min-h-[40px] px-3.5 md:px-4 py-2 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="min-h-[40px] px-3 sm:px-4 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Start Camera
               </button>
@@ -820,11 +936,21 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content Container */}
-      <main className="flex-1 max-w-[1340px] w-full mx-auto px-4 md:px-6 py-6 md:py-10">
-        {/* SECTION 01: Optical Scanner & Action Card */}
-        <section id="scanner" aria-labelledby="scanner-heading" className="scroll-mt-20">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 md:gap-6 mb-6 md:mb-8">
+      {/* Main Content Container with Multi-Page Views */}
+      <main className="relative z-10 flex-1 max-w-[1340px] w-full mx-auto px-4 md:px-6 py-4 sm:py-6 md:py-8">
+        <AnimatePresence mode="wait">
+          {activeNavSection === 'scanner' && (
+            <motion.div
+              key="scanner-page"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+              className="space-y-6"
+            >
+              {/* SECTION 01: Optical Scanner & Action Card */}
+              <section id="scanner" aria-labelledby="scanner-heading" className="scroll-mt-20">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 md:gap-6 mb-5 md:mb-8">
             <div>
               <div className="text-xs text-slate-400">
                 <span>01. Real-Time Botanical Vision & QR Reader</span>
@@ -846,99 +972,79 @@ export default function App() {
               </h1>
             </div>
 
-            {/* Scanner Mode Toggle & Action Toolbar */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 shrink-0 max-w-full">
+            {/* Scanner Mode Toggle & Action Toolbar — Flowing 2-row deck on mobile, inline row on tablet/desktop */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto shrink-0">
               {/* Plant Vision vs QR Tag Mode Switcher */}
-              <div className="flex items-center p-1 bg-slate-200/70 rounded-xl border border-slate-300/80">
+              <div className="grid grid-cols-2 sm:flex items-center p-1 bg-slate-200/70 rounded-2xl sm:rounded-xl border border-slate-300/70">
                 <button
                   type="button"
                   onClick={() => setScannerMode('botanical')}
-                  className={`min-h-[36px] px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  className={`min-h-[42px] sm:min-h-[36px] px-3 py-1.5 text-xs font-medium rounded-xl sm:rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
                     scannerMode === 'botanical'
                       ? 'bg-white text-slate-900 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Scan className="w-3.5 h-3.5 text-emerald-600" />
+                  <Scan className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span>Plant Vision</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setScannerMode('qr')}
-                  className={`min-h-[36px] px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  className={`min-h-[42px] sm:min-h-[36px] px-3 py-1.5 text-xs font-medium rounded-xl sm:rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
                     scannerMode === 'qr'
                       ? 'bg-white text-slate-900 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <QrCode className="w-3.5 h-3.5 text-cyan-600" />
+                  <QrCode className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
                   <span>QR & Pot Tag</span>
                 </button>
               </div>
 
-              {/* Deep AI One-Tap Scan Button */}
-              {scannerMode === 'botanical' && (
+              <div className="grid grid-cols-2 sm:flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleRunDeepAIScan}
-                  disabled={isDeepAnalyzing || (!webcamActive && !uploadedPreviewUrl)}
-                  className="min-h-[40px] px-4 py-2 text-xs font-medium text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="min-h-[44px] sm:min-h-[40px] px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200/90 hover:bg-slate-50 rounded-2xl sm:rounded-xl transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
                 >
-                  {isDeepAnalyzing ? (
+                  <Upload className="w-3.5 h-3.5 shrink-0" />
+                  <span>Upload Leaf</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (ttsEnabled) stopSpeech();
+                    setTtsEnabled((prev) => !prev);
+                  }}
+                  className="min-h-[44px] sm:min-h-[40px] px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200/90 hover:bg-slate-50 rounded-2xl sm:rounded-xl transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
+                >
+                  {ttsEnabled ? (
                     <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Analyzing...</span>
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Voice On</span>
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Deep AI Scan</span>
+                      <VolumeX className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>Muted</span>
                     </>
                   )}
                 </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="min-h-[40px] px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200/90 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Upload</span>
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (ttsEnabled) stopSpeech();
-                  setTtsEnabled((prev) => !prev);
-                }}
-                className="min-h-[40px] px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200/90 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
-              >
-                {ttsEnabled ? (
-                  <>
-                    <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Voice On</span>
-                  </>
-                ) : (
-                  <>
-                    <VolumeX className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Muted</span>
-                  </>
-                )}
-              </button>
+              </div>
             </div>
           </div>
 
           {webcamError && (
-            <div className="mb-6 bg-amber-50/80 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4 text-xs text-amber-900">
+            <div className="mb-5 bg-amber-50/80 border border-amber-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-4 text-xs text-amber-900">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>{webcamError}</span>
@@ -953,36 +1059,16 @@ export default function App() {
             </div>
           )}
 
-          {deepAnalysisFeedback && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4 text-xs text-emerald-900"
-            >
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{deepAnalysisFeedback}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDeepAnalysisFeedback(null)}
-                className="underline font-mono text-[11px] cursor-pointer"
-              >
-                Close
-              </button>
-            </motion.div>
-          )}
-
           {modelStatus === 'error' && (
-            <div className="mb-6 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-xs text-rose-900">
+            <div className="mb-5 bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 text-xs text-rose-900">
               {modelErrorMsg}
             </div>
           )}
 
-          {/* Split Console */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          {/* Split Console (Flows like a river on mobile, 12-col split on desktop) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 lg:gap-6 items-stretch">
             {/* LEFT 5 COLS: Optical Feed & Live Foliar HUD */}
-            <div className="lg:col-span-5 bg-white border border-slate-200/90 rounded-2xl p-4 md:p-6 flex flex-col justify-between space-y-5 md:space-y-6 shadow-xs">
+            <div className="lg:col-span-5 bg-white border border-slate-200/90 rounded-3xl sm:rounded-2xl p-4 sm:p-5 md:p-6 flex flex-col justify-between space-y-5 md:space-y-6 shadow-xs">
               <div>
                 <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
                   <span>
@@ -1218,22 +1304,27 @@ export default function App() {
                     {scannerMode === 'botanical' ? (
                       <button
                         type="button"
-                        onClick={handleRunDeepAIScan}
-                        disabled={isDeepAnalyzing}
-                        className="flex-1 min-h-[44px] py-2 px-2 text-xs font-medium bg-emerald-600 active:bg-emerald-700 text-white rounded-xl flex items-center justify-center gap-1 shadow-sm disabled:opacity-50 cursor-pointer active:scale-95 transition-transform"
+                        onClick={() => {
+                          if (isTriggered && activeProfile && activeProfile.id !== 'background') {
+                            setInspectingQrSpecimen(activeProfile);
+                          } else {
+                            setShowHealthHudInfo((prev) => !prev);
+                          }
+                        }}
+                        className={`flex-1 min-h-[44px] py-2 px-2 text-xs font-medium rounded-xl flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-transform ${
+                          isTriggered
+                            ? 'bg-emerald-600 active:bg-emerald-700 text-white'
+                            : 'bg-slate-100 text-slate-800'
+                        }`}
                       >
-                        {isDeepAnalyzing ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 text-emerald-200" />
-                        )}
-                        <span>{isDeepAnalyzing ? 'Analyzing...' : 'Deep AI'}</span>
+                        <BookOpen className="w-4 h-4" />
+                        <span>{isTriggered ? 'Dossier' : 'Metrics'}</span>
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={() => setShowSampleQrModal(true)}
-                        className="flex-1 min-h-[44px] py-2 px-2 text-xs font-medium bg-cyan-600 active:bg-cyan-700 text-white rounded-xl flex items-center justify-center gap-1 shadow-sm cursor-pointer active:scale-95 transition-transform"
+                        className="flex-1 min-h-[44px] py-2 px-2 text-xs font-medium bg-cyan-600 active:bg-cyan-700 text-white rounded-xl flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-transform"
                       >
                         <QrCode className="w-4 h-4 text-cyan-200" />
                         <span>Tags</span>
@@ -1437,10 +1528,10 @@ export default function App() {
 
             {/* Minimal Raw Model & Voice Cooldown Footer */}
               <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-                <div className="font-mono text-[11px] truncate">
+                <div className="font-mono text-[11px] flex flex-wrap items-center gap-x-2 gap-y-1">
                   {rawPredictions.map((p, idx) => (
-                    <span key={p.className}>
-                      {idx > 0 ? ' · ' : ''}
+                    <span key={p.className} className="whitespace-nowrap">
+                      {idx > 0 ? '· ' : ''}
                       {p.className}: {(p.probability * 100).toFixed(0)}%
                     </span>
                   ))}
@@ -1464,8 +1555,29 @@ export default function App() {
               </div>
             </div>
 
+            {/* Mobile River Flow Bridge between Scanner and Botanical Dossier */}
+            <div className="lg:hidden flex flex-col items-center py-3" aria-hidden="false">
+              <div className="w-px h-6 bg-gradient-to-b from-slate-200 via-emerald-400 to-emerald-500 river-connector-pulse" />
+              <a
+                href="#active-dossier-card"
+                className={`my-1 min-h-[38px] px-4 py-1.5 rounded-full border text-xs font-medium flex items-center gap-1.5 transition-all shadow-2xs ${
+                  isTriggered && !isBackgroundOrNoise
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-slate-600 border-slate-200/90'
+                }`}
+              >
+                <ArrowDown className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {isTriggered && !isBackgroundOrNoise
+                    ? `Verified: ${activeProfile.name} (${topPrediction.confidence.toFixed(1)}%)`
+                    : 'Live Botanical Dossier Flow'}
+                </span>
+              </a>
+              <div className="w-px h-5 bg-gradient-to-b from-emerald-500 to-slate-200" />
+            </div>
+
             {/* RIGHT 7 COLS: Action Card */}
-            <div className="lg:col-span-7">
+            <div id="active-dossier-card" className="lg:col-span-7 scroll-mt-16">
               <BotanicalActionCard
                 activeProfile={activeProfile}
                 confidence={topPrediction.confidence}
@@ -1482,14 +1594,78 @@ export default function App() {
           </div>
         </section>
 
-        {/* Section 02: Botanical Reference & Environmental Impact */}
+        {/* Quick Multi-Page Jumper from Scanner */}
+        <div className="p-4 sm:p-5 bg-white/80 border border-slate-200/80 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-2xs">
+          <div className="text-slate-600 text-center sm:text-left">
+            <span className="font-semibold text-slate-800">Need plant reference dossiers or historical logs?</span>
+            <span className="hidden sm:inline text-slate-400 ml-1">Explore individual pages without clutter:</span>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => navigateToPage('specimens')}
+              className="flex-1 sm:flex-initial min-h-[38px] px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-medium rounded-xl transition-colors cursor-pointer text-center"
+            >
+              Species Guide (5) →
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToPage('analytics')}
+              className="flex-1 sm:flex-initial min-h-[38px] px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-medium rounded-xl transition-colors cursor-pointer text-center"
+            >
+              Field History ({scanLogs.length}) →
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    )}
+
+    {/* PAGE 02: Botanical Reference Herbarium */}
+    {activeNavSection === 'specimens' && (
+      <motion.div
+        key="specimens-page"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18 }}
+      >
         <EnvironmentalImpactSection
+          activeSection="specimens"
+          onSpeakProfile={(profile) => speakProfile(profile, true)}
+          onOpenQrModal={(profile) => setQrModalSpecimen(profile)}
+          onNavigateToScanner={() => navigateToPage('scanner')}
+        />
+      </motion.div>
+    )}
+
+    {/* PAGE 03: Ecological & Public Health Impact */}
+    {activeNavSection === 'impact' && (
+      <motion.div
+        key="impact-page"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18 }}
+      >
+        <EnvironmentalImpactSection
+          activeSection="impact"
           onSpeakProfile={(profile) => speakProfile(profile, true)}
           onOpenQrModal={(profile) => setQrModalSpecimen(profile)}
         />
+      </motion.div>
+    )}
 
-        {/* Section 03: User Progress & Plant Health Insights Dashboard */}
+    {/* PAGE 04: User Progress, Telemetry & Scan History */}
+    {activeNavSection === 'analytics' && (
+      <motion.div
+        key="analytics-page"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18 }}
+      >
         <ProgressDashboard
+          standalone={true}
           dailyProgress={dailyProgress}
           scanLogs={scanLogs}
           onExportCsv={handleExportCsv}
@@ -1497,58 +1673,14 @@ export default function App() {
           onUpdateNote={handleUpdateNote}
           onToggleBookmark={handleToggleBookmark}
         />
-      </main>
-
-      {/* Mobile Sticky Identification Sheet */}
-      <AnimatePresence>
-        {isTriggered && !isBackgroundOrNoise && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="lg:hidden fixed bottom-16 inset-x-3 z-30 bg-white/95 backdrop-blur-md rounded-2xl border border-emerald-300 shadow-xl p-3 flex items-center justify-between gap-2"
-          >
-            <div
-              className="flex items-center gap-2.5 overflow-hidden cursor-pointer flex-1"
-              onClick={() => setInspectingQrSpecimen(activeProfile)}
-            >
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div className="truncate">
-                <div className="text-xs font-bold text-slate-900 truncate">
-                  {activeProfile.name}
-                </div>
-                <div className="text-[10px] font-mono text-emerald-700">
-                  {topPrediction.confidence.toFixed(1)}% Match · Tap for dossier
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => speakProfile(activeProfile, true)}
-                className="min-h-[40px] px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs flex items-center gap-1 cursor-pointer"
-                title="Read out loud"
-              >
-                <Volume2 className="w-3.5 h-3.5 text-emerald-700" />
-                <span className="text-[11px]">Audio</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setInspectingQrSpecimen(activeProfile)}
-                className="min-h-[40px] px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl text-xs shadow-xs cursor-pointer"
-              >
-                Dossier
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </motion.div>
+    )}
+  </AnimatePresence>
+</main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200/80 px-4 md:px-6 py-6 mt-12 pb-24 md:pb-6">
-        <div className="max-w-[1340px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+      <footer className="relative z-10 bg-white/85 backdrop-blur-md border-t border-slate-200/80 px-4 md:px-6 py-6 mt-10 pb-22 md:pb-6">
+        <div className="max-w-[1340px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 text-center sm:text-left">
           <div>
             <span>The Green Medic</span>
             <span className="mx-2" aria-hidden="true">·</span>
@@ -1557,68 +1689,111 @@ export default function App() {
             <span>Model oaqtjokUw</span>
           </div>
           <div className="flex items-center gap-4">
-            <a href="#scanner" className="hover:text-slate-900">
+            <button
+              type="button"
+              onClick={() => navigateToPage('scanner')}
+              className={`hover:text-slate-900 cursor-pointer ${activeNavSection === 'scanner' ? 'text-emerald-700 font-semibold' : ''}`}
+            >
               Scanner
-            </a>
+            </button>
             <span aria-hidden="true">·</span>
-            <a href="#specimens" className="hover:text-slate-900">
+            <button
+              type="button"
+              onClick={() => navigateToPage('specimens')}
+              className={`hover:text-slate-900 cursor-pointer ${activeNavSection === 'specimens' ? 'text-emerald-700 font-semibold' : ''}`}
+            >
               Specimens
-            </a>
+            </button>
             <span aria-hidden="true">·</span>
-            <a href="#impact" className="hover:text-slate-900">
+            <button
+              type="button"
+              onClick={() => navigateToPage('impact')}
+              className={`hover:text-slate-900 cursor-pointer ${activeNavSection === 'impact' ? 'text-emerald-700 font-semibold' : ''}`}
+            >
               Impact
-            </a>
+            </button>
             <span aria-hidden="true">·</span>
-            <a href="#analytics" className="hover:text-slate-900">
+            <button
+              type="button"
+              onClick={() => navigateToPage('analytics')}
+              className={`hover:text-slate-900 cursor-pointer ${activeNavSection === 'analytics' ? 'text-emerald-700 font-semibold' : ''}`}
+            >
               Analytics
-            </a>
+            </button>
           </div>
         </div>
       </footer>
 
-      {/* Mobile Bottom Quick-Nav Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 h-14 flex items-center justify-around px-2 shadow-lg">
-        <a
-          href="#scanner"
-          onClick={() => setActiveNavSection('scanner')}
-          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[44px] transition-colors ${
-            activeNavSection === 'scanner' ? 'text-emerald-700 font-semibold' : 'text-slate-500 hover:text-slate-900'
+      {/* Mobile Bottom Tab Bar (Thumb-Zone Multi-Page Navigation) */}
+      <nav
+        aria-label="Mobile Bottom Navigation"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 h-14 grid grid-cols-4 items-center px-2 shadow-lg"
+      >
+        <button
+          type="button"
+          onClick={() => navigateToPage('scanner')}
+          className={`flex flex-col items-center justify-center min-h-[44px] rounded-xl transition-all cursor-pointer ${
+            activeNavSection === 'scanner'
+              ? 'text-emerald-700 font-bold'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           <Camera className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">Scanner</span>
-        </a>
-        <a
-          href="#specimens"
-          onClick={() => setActiveNavSection('specimens')}
-          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[44px] transition-colors ${
-            activeNavSection === 'specimens' ? 'text-emerald-700 font-semibold' : 'text-slate-500 hover:text-slate-900'
+          <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
+            Scanner
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigateToPage('specimens')}
+          className={`relative flex flex-col items-center justify-center min-h-[44px] rounded-xl transition-all cursor-pointer ${
+            activeNavSection === 'specimens'
+              ? 'text-emerald-700 font-bold'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">Species</span>
-        </a>
-        <a
-          href="#impact"
-          onClick={() => setActiveNavSection('impact')}
-          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[44px] transition-colors ${
-            activeNavSection === 'impact' ? 'text-emerald-700 font-semibold' : 'text-slate-500 hover:text-slate-900'
+          <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
+            Species
+          </span>
+          <span className="absolute top-1 right-3 text-[9px] px-1 py-0.1 bg-emerald-100 text-emerald-800 rounded-full font-mono">
+            5
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigateToPage('impact')}
+          className={`flex flex-col items-center justify-center min-h-[44px] rounded-xl transition-all cursor-pointer ${
+            activeNavSection === 'impact'
+              ? 'text-emerald-700 font-bold'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           <Globe className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">Impact</span>
-        </a>
-        <a
-          href="#analytics"
-          onClick={() => setActiveNavSection('analytics')}
-          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[44px] transition-colors ${
-            activeNavSection === 'analytics' ? 'text-emerald-700 font-semibold' : 'text-slate-500 hover:text-slate-900'
+          <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
+            Impact
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigateToPage('analytics')}
+          className={`relative flex flex-col items-center justify-center min-h-[44px] rounded-xl transition-all cursor-pointer ${
+            activeNavSection === 'analytics'
+              ? 'text-emerald-700 font-bold'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           <BarChart3 className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">History</span>
-        </a>
-      </div>
+          <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
+            History
+          </span>
+          {scanLogs.length > 0 && (
+            <span className="absolute top-1 right-3 text-[9px] px-1 py-0.1 bg-slate-200 text-slate-800 rounded-full font-mono">
+              {scanLogs.length}
+            </span>
+          )}
+        </button>
+      </nav>
     </div>
   );
 }

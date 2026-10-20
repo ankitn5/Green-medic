@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, QrCode, Download, ExternalLink, Leaf } from 'lucide-react';
+import { X, QrCode, Download } from 'lucide-react';
 import QRCode from 'qrcode';
 import { BOTANICAL_CLASSES, BotanicalClassProfile } from '../data/botanicalData';
 
@@ -51,39 +51,48 @@ export const SampleQrTagsModal: React.FC<SampleQrTagsModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-xs overflow-y-auto">
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/65 backdrop-blur-xs overflow-y-auto">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 text-left relative max-h-[90vh] flex flex-col"
+          initial={{ opacity: 0, y: 40, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 40, scale: 0.98 }}
+          transition={{ type: 'spring', damping: 26, stiffness: 260 }}
+          className="bg-white rounded-t-3xl sm:rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200 text-left relative max-h-[90vh] flex flex-col"
+          role="dialog"
+          aria-modal="true"
         >
+          {/* Mobile Sheet Grab Handle */}
+          <div className="sm:hidden pb-3 flex justify-center">
+            <div className="w-10 h-1.5 rounded-full bg-slate-300" />
+          </div>
+
           {/* Header */}
           <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-800 text-xs font-medium mb-1">
-                <QrCode className="w-3.5 h-3.5" />
+              <div className="flex items-center gap-1.5 text-cyan-800 text-xs font-medium mb-1">
+                <QrCode className="w-3.5 h-3.5 text-cyan-600" />
                 <span>Field Testing & Botanical Pot Tags</span>
               </div>
-              <h3 className="text-xl font-bold text-slate-900 tracking-tight">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                 Botanical Specimen QR Codes
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Point "The Green Medic" camera in <strong>QR & Pot Tag</strong> mode to scan any of these tags in real time.
+                Point The Green Medic camera in <strong>QR & Pot Tag</strong> mode to scan any of these tags in real time.
               </p>
             </div>
 
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              className="min-h-[40px] min-w-[40px] flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+              aria-label="Close modal"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Grid of QR tags */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-5 overflow-y-auto flex-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4 sm:py-5 overflow-y-auto flex-1">
             {BOTANICAL_CLASSES.filter((c) => c.id !== 'background').map((specimen) => (
               <div
                 key={specimen.id}
@@ -99,6 +108,7 @@ export const SampleQrTagsModal: React.FC<SampleQrTagsModalProps> = ({
                     <img
                       src={qrUrls[specimen.id]}
                       alt={`QR Code for ${specimen.name}`}
+                      referrerPolicy="no-referrer"
                       className="w-32 h-32"
                     />
                   ) : (
@@ -113,7 +123,7 @@ export const SampleQrTagsModal: React.FC<SampleQrTagsModalProps> = ({
                   <div className="text-xs italic text-slate-500">{specimen.scientificName}</div>
                 </div>
 
-                <div className="mt-3 pt-2 border-t border-slate-200/60 w-full flex items-center justify-center gap-2">
+                <div className="mt-3 pt-2.5 border-t border-slate-200/60 w-full grid grid-cols-2 gap-2">
                   {onSelectSpecimen && (
                     <button
                       type="button"
@@ -121,7 +131,7 @@ export const SampleQrTagsModal: React.FC<SampleQrTagsModalProps> = ({
                         onSelectSpecimen(specimen);
                         onClose();
                       }}
-                      className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                      className="min-h-[42px] sm:min-h-[36px] px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer flex items-center justify-center"
                     >
                       Inspect
                     </button>
@@ -130,9 +140,9 @@ export const SampleQrTagsModal: React.FC<SampleQrTagsModalProps> = ({
                     <a
                       href={qrUrls[specimen.id]}
                       download={`pot-tag-${specimen.id}.png`}
-                      className="px-3 py-1.5 text-xs font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors flex items-center gap-1"
+                      className="min-h-[42px] sm:min-h-[36px] px-3 py-1.5 text-xs font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors flex items-center justify-center gap-1"
                     >
-                      <Download className="w-3 h-3" />
+                      <Download className="w-3.5 h-3.5 shrink-0" />
                       <span>Download</span>
                     </a>
                   )}
@@ -147,7 +157,7 @@ export const SampleQrTagsModal: React.FC<SampleQrTagsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-xl cursor-pointer"
+              className="min-h-[42px] sm:min-h-[36px] px-5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-xl cursor-pointer"
             >
               Done
             </button>

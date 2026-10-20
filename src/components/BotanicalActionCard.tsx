@@ -45,7 +45,7 @@ const BioactivityRadarChart: React.FC<{
   return (
     <svg
       viewBox={`0 0 ${size} ${size}`}
-      className="w-full max-w-[200px] h-auto mx-auto select-none"
+      className="w-full max-w-[190px] sm:max-w-[200px] h-auto mx-auto select-none"
       role="img"
       aria-label="Phytochemical bioactivity radar chart"
     >
@@ -137,18 +137,18 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
   const isWeed = activeProfile.category === 'weed';
 
   return (
-    <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-6 md:p-7 h-full flex flex-col justify-between overflow-hidden shadow-xs">
+    <div className="bg-white border border-slate-200/90 rounded-3xl sm:rounded-2xl p-5 sm:p-6 md:p-7 h-full flex flex-col justify-between overflow-hidden shadow-xs">
       <AnimatePresence mode="wait">
         {isBackgroundOrNoise || !isTriggered ? (
           <motion.div
             key="standby-gate"
-            initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
-            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: -12, filter: 'blur(4px)' }}
-            transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             className="flex flex-col justify-between h-full"
           >
-            <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-4">
+            <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-100 pb-3.5 sm:pb-4">
               <div>
                 <span>Noise Filter Active</span>
                 <span className="mx-2" aria-hidden="true">·</span>
@@ -157,7 +157,7 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
               <span className="font-mono tabular-nums">Standby</span>
             </div>
 
-            <div className="my-auto py-12 text-center max-w-md mx-auto">
+            <div className="my-auto py-7 sm:py-12 text-center max-w-md mx-auto">
               <motion.div
                 animate={{ y: [0, -5, 0] }}
                 transition={{
@@ -165,7 +165,7 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
                   repeat: Infinity,
                   ease: 'easeInOut',
                 }}
-                className="w-28 h-24 mx-auto mb-6 opacity-80"
+                className="w-24 h-20 sm:w-28 sm:h-24 mx-auto mb-4 sm:mb-6 opacity-85"
               >
                 <BotanicalSpecimenGraphic
                   specimenId="background"
@@ -174,12 +174,15 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
                 />
               </motion.div>
 
-              <h3 className="text-xl font-semibold text-slate-900 tracking-tight mb-2">
+              <h3
+                className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight mb-2"
+                style={{ textWrap: 'balance' }}
+              >
                 {isBackgroundOrNoise
                   ? 'Background & Non-Botanical Objects Ignored'
                   : `Hold Leaf Steady for ≥ ${threshold.toFixed(0)}% Lock`}
               </h3>
-              <p className="text-sm text-slate-500 leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
                 {isBackgroundOrNoise
                   ? 'Hands, faces, empty space, and room surfaces are automatically filtered out. Place a single medicinal leaf or weed in front of the lens.'
                   : `Detecting ${activeProfile.name} (${confidence.toFixed(
@@ -190,7 +193,7 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
               </p>
             </div>
 
-            <div className="border-t border-slate-100 pt-4 flex items-center justify-between text-xs text-slate-400">
+            <div className="border-t border-slate-100 pt-3.5 sm:pt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
               <span>Skin & Background Gate: Engaged</span>
               <span className="font-mono tabular-nums">
                 Voice Output: Muted until ≥ {threshold.toFixed(0)}%
@@ -200,15 +203,15 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
         ) : (
           <motion.div
             key={activeProfile.id}
-            initial={{ opacity: 0, y: 18, scale: 0.985, filter: 'blur(4px)' }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: -14, scale: 0.985, filter: 'blur(4px)' }}
+            initial={{ opacity: 0, y: 14, scale: 0.99 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.99 }}
             transition={{ type: 'spring', stiffness: 220, damping: 24 }}
             className="flex flex-col justify-between h-full"
           >
             <div>
               {/* Top Minimal Status Header */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5 sm:pb-4">
                 <div className="flex items-center gap-2 text-xs">
                   <span
                     className={
@@ -219,12 +222,12 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
                   >
                     {isWeed ? (
                       <>
-                        <ShieldAlert className="w-4 h-4" />
+                        <ShieldAlert className="w-4 h-4 shrink-0" />
                         <span>Common Weed Identified</span>
                       </>
                     ) : (
                       <>
-                        <CheckCircle2 className="w-4 h-4" />
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
                         <span>Medicinal Leaf Verified</span>
                       </>
                     )}
@@ -235,19 +238,19 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
 
                 <div className="flex items-baseline gap-1">
                   <span className="text-xs text-slate-400 mr-1">Confidence</span>
-                  <span className="text-xl font-mono font-bold text-slate-900 tabular-nums">
+                  <span className="text-lg sm:text-xl font-mono font-bold text-slate-900 tabular-nums">
                     {confidence.toFixed(1)}%
                   </span>
                 </div>
               </div>
 
               {/* Specimen Title & Voice Controls */}
-              <div className="mt-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row sm:items-start justify-between gap-3.5 sm:gap-4">
                 <div>
                   <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
                     {activeProfile.name}
                   </h2>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-y-1">
                     <span className="italic">{activeProfile.scientificName}</span>
                     <span className="mx-2" aria-hidden="true">·</span>
                     <span>{activeProfile.leafMorphology.venation} venation</span>
@@ -256,12 +259,12 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2.5 shrink-0">
+                <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 bg-slate-50 sm:bg-transparent p-2 sm:p-0 rounded-2xl border border-slate-100 sm:border-0">
                   {isSpeaking ? (
                     <button
                       type="button"
                       onClick={onStopSpeech}
-                      className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                      className="min-h-[42px] sm:min-h-[38px] px-4 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                     >
                       <VolumeX className="w-3.5 h-3.5" />
                       <span>Stop Voice</span>
@@ -270,13 +273,13 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
                     <button
                       type="button"
                       onClick={() => onSpeakNow(activeProfile)}
-                      className="px-3.5 py-2 text-xs font-medium text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                      className="min-h-[42px] sm:min-h-[38px] px-4 py-2 text-xs font-medium text-slate-800 bg-white sm:bg-slate-100 hover:bg-slate-200 border border-slate-200/80 sm:border-0 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-2xs sm:shadow-none"
                     >
                       <Volume2 className="w-3.5 h-3.5 text-emerald-700" />
                       <span>Read Benefits</span>
                     </button>
                   )}
-                  <span className="text-xs font-mono text-slate-400 tabular-nums">
+                  <span className="text-xs font-mono text-slate-400 tabular-nums px-2 sm:px-0">
                     {!ttsEnabled
                       ? 'Muted'
                       : isSpeaking
@@ -293,8 +296,8 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
               </p>
 
               {/* Health Benefits + Radar Split */}
-              <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5 border-t border-slate-100">
-                <div className="lg:col-span-7 space-y-4">
+              <div className="mt-5 sm:mt-6 grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 pt-5 border-t border-slate-100">
+                <div className="lg:col-span-7 space-y-3.5 sm:space-y-4">
                   <div className="text-xs font-medium text-slate-400">
                     {isWeed
                       ? 'Ecological & Safety Profile'
@@ -308,9 +311,9 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{
-                          delay: idx * 0.06,
-                          duration: 0.3,
-                          ease: [0.22, 1, 0.36, 1],
+                          delay: idx * 0.05,
+                          duration: 0.25,
+                          ease: [0.16, 1, 0.3, 1],
                         }}
                         className="pb-3.5 border-b border-slate-100 last:border-b-0 last:pb-0"
                       >
@@ -328,7 +331,7 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
                   </div>
                 </div>
 
-                <div className="lg:col-span-5 flex flex-col justify-between bg-slate-50/70 rounded-xl p-4 border border-slate-100">
+                <div className="lg:col-span-5 flex flex-col justify-between bg-slate-50/70 rounded-2xl p-4 border border-slate-100">
                   <div>
                     <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
                       <span>Bioactivity Profile</span>
@@ -348,12 +351,12 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
                       {activeProfile.activeCompounds.map((c) => (
                         <div
                           key={c.compound}
-                          className="flex items-center justify-between text-xs"
+                          className="flex items-center justify-between text-xs gap-2"
                         >
-                          <span className="text-slate-700 truncate max-w-[160px]">
+                          <span className="text-slate-700 truncate">
                             {c.compound}
                           </span>
-                          <span className="font-mono tabular-nums text-slate-900 font-medium">
+                          <span className="font-mono tabular-nums text-slate-900 font-medium shrink-0">
                             {c.concentrationMgG.toFixed(1)}
                             <span className="text-[10px] text-slate-400 ml-1">
                               mg/g
@@ -368,7 +371,7 @@ export const BotanicalActionCard: React.FC<BotanicalActionCardProps> = ({
             </div>
 
             {/* Bottom Protocol Strip */}
-            <div className="mt-6 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="mt-5 sm:mt-6 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               <div>
                 <span className="text-slate-400 font-medium block mb-1">
                   {isWeed ? 'Safe Removal Protocol' : 'Preparation Protocol'}

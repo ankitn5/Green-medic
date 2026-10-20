@@ -1,0 +1,302 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 3. Entity Validation Blueprints (Anti-Update-Gap)
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'photoURL', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 100
+        && data.photoURL is string
+        && data.photoURL.size() >= 0
+        && data.photoURL.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidScanLog(data) {
+      return data.keys().hasAll([
+          'id',
+          'ownerId',
+          'timestamp',
+          'specimenId',
+          'specimenName',
+          'scientificName',
+          'category',
+          'confidence',
+          'chlorophyllSpad',
+          'laminaIntegrity',
+          'audioSpoken',
+          'sourceMode',
+          'notes',
+          'bookmarked',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'ownerId',
+          'timestamp',
+          'specimenId',
+          'specimenName',
+          'scientificName',
+          'category',
+          'confidence',
+          'chlorophyllSpad',
+          'laminaIntegrity',
+          'audioSpoken',
+          'sourceMode',
+          'notes',
+          'bookmarked',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.id is string
+        && data.id.size() >= 1
+        && data.id.size() <= 128
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.timestamp is string
+        && data.timestamp.size() >= 1
+        && data.timestamp.size() <= 32
+        && data.specimenId is string
+        && data.specimenId.size() >= 1
+        && data.specimenId.size() <= 64
+        && data.specimenId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.specimenName is string
+        && data.specimenName.size() >= 1
+        && data.specimenName.size() <= 120
+        && data.scientificName is string
+        && data.scientificName.size() >= 1
+        && data.scientificName.size() <= 120
+        && data.category is string
+        && data.category.size() >= 1
+        && data.category.size() <= 40
+        && (data.category == 'medicinal' || data.category == 'weed' || data.category == 'background')
+        && (data.confidence is int || data.confidence is float)
+        && data.confidence >= 0
+        && data.confidence <= 100
+        && (data.chlorophyllSpad is int || data.chlorophyllSpad is float)
+        && data.chlorophyllSpad >= 0
+        && data.chlorophyllSpad <= 100
+        && (data.laminaIntegrity is int || data.laminaIntegrity is float)
+        && data.laminaIntegrity >= 0
+        && data.laminaIntegrity <= 100
+        && data.audioSpoken is bool
+        && data.sourceMode is string
+        && data.sourceMode.size() >= 1
+        && data.sourceMode.size() <= 32
+        && (data.sourceMode == 'Live Webcam' || data.sourceMode == 'Specimen Calibration')
+        && data.notes is string
+        && data.notes.size() >= 0
+        && data.notes.size() <= 500
+        && data.bookmarked is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDailyProgressDoc(data) {
+      return data.keys().hasAll([
+          'id',
+          'ownerId',
+          'day',
+          'dateLabel',
+          'sortOrder',
+          'totalScans',
+          'verifiedTriggers',
+          'noiseRejected',
+          'avgConfidence',
+          'leafHealthIndex',
+          'chlorophyllSpad',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'ownerId',
+          'day',
+          'dateLabel',
+          'sortOrder',
+          'totalScans',
+          'verifiedTriggers',
+          'noiseRejected',
+          'avgConfidence',
+          'leafHealthIndex',
+          'chlorophyllSpad',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.id is string
+        && data.id.size() >= 1
+        && data.id.size() <= 128
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId is string
+        && data.ownerId.size() >= 1
+        && data.ownerId.size() <= 128
+        && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.day is string
+        && data.day.size() >= 1
+        && data.day.size() <= 32
+        && data.dateLabel is string
+        && data.dateLabel.size() >= 1
+        && data.dateLabel.size() <= 32
+        && (data.sortOrder is int || data.sortOrder is float)
+        && data.sortOrder >= 0
+        && data.sortOrder <= 366
+        && (data.totalScans is int || data.totalScans is float)
+        && data.totalScans >= 0
+        && data.totalScans <= 100000
+        && (data.verifiedTriggers is int || data.verifiedTriggers is float)
+        && data.verifiedTriggers >= 0
+        && data.verifiedTriggers <= 100000
+        && (data.noiseRejected is int || data.noiseRejected is float)
+        && data.noiseRejected >= 0
+        && data.noiseRejected <= 100000
+        && (data.avgConfidence is int || data.avgConfidence is float)
+        && data.avgConfidence >= 0
+        && data.avgConfidence <= 100
+        && (data.leafHealthIndex is int || data.leafHealthIndex is float)
+        && data.leafHealthIndex >= 0
+        && data.leafHealthIndex <= 100
+        && (data.chlorophyllSpad is int || data.chlorophyllSpad is float)
+        && data.chlorophyllSpad >= 0
+        && data.chlorophyllSpad <= 100
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Rules
+    match /users/{userId} {
+      allow get: if isSignedIn() && isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isVerified()
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && request.auth.uid == userId
+        && existing().uid == request.auth.uid
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt'])
+        );
+      allow delete: if false;
+    }
+
+    match /scanLogs/{scanId} {
+      allow get: if isSignedIn() && isVerified() && isValidId(scanId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && isVerified() && existing().ownerId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isVerified()
+        && isValidId(scanId)
+        && isValidScanLog(incoming())
+        && incoming().id == scanId
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isSignedIn()
+        && isVerified()
+        && isValidId(scanId)
+        && isValidScanLog(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().id == existing().id
+        && incoming().specimenId == existing().specimenId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: Update Researcher Field Note
+          (incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'updatedAt'])) ||
+          // Action: Toggle Bookmark Star
+          (incoming().diff(existing()).affectedKeys().hasOnly(['bookmarked', 'updatedAt']))
+        );
+      allow delete: if isSignedIn() && isVerified() && isValidId(scanId) && existing().ownerId == request.auth.uid;
+    }
+
+    match /dailyProgress/{progressId} {
+      allow get: if isSignedIn() && isVerified() && isValidId(progressId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && isVerified() && existing().ownerId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isVerified()
+        && isValidId(progressId)
+        && isValidDailyProgressDoc(incoming())
+        && incoming().id == progressId
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isSignedIn()
+        && isVerified()
+        && isValidId(progressId)
+        && isValidDailyProgressDoc(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().id == existing().id
+        && incoming().day == existing().day
+        && incoming().dateLabel == existing().dateLabel
+        && incoming().sortOrder == existing().sortOrder
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: Record Daily Scan Telemetry Aggregation
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'totalScans',
+            'verifiedTriggers',
+            'noiseRejected',
+            'avgConfidence',
+            'leafHealthIndex',
+            'chlorophyllSpad',
+            'updatedAt'
+          ])
+        );
+      allow delete: if isSignedIn() && isVerified() && isValidId(progressId) && existing().ownerId == request.auth.uid;
+    }
+  }
+}

@@ -1,0 +1,259 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile for The Green Medic botanical telemetry.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique Firebase Auth user identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the student researcher or botanist.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Optional avatar URL from Google Sign-In.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated."
+        }
+      },
+      "required": ["uid", "displayName", "photoURL", "createdAt", "updatedAt"]
+    },
+    "ScanLog": {
+      "title": "ScanLog",
+      "description": "Individual verified botanical scan record and foliar health telemetry log.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique scan identifier.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the user who recorded the scan.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Formatted time string of the scan.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "specimenId": {
+          "type": "string",
+          "description": "Botanical specimen class identifier.",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "specimenName": {
+          "type": "string",
+          "description": "Common name of the identified botanical specimen.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "scientificName": {
+          "type": "string",
+          "description": "Scientific binomial name of the specimen.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "description": "Classification safety category.",
+          "enum": ["medicinal", "weed", "background"],
+          "maxLength": 40
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Neural network classification confidence percentage (0-100)."
+        },
+        "chlorophyllSpad": {
+          "type": "number",
+          "description": "Estimated foliar chlorophyll SPAD index (0-100)."
+        },
+        "laminaIntegrity": {
+          "type": "number",
+          "description": "Estimated leaf lamina structural integrity percentage (0-100)."
+        },
+        "audioSpoken": {
+          "type": "boolean",
+          "description": "Whether voice synthesis readout was triggered."
+        },
+        "sourceMode": {
+          "type": "string",
+          "description": "Optical capture mode used for the scan.",
+          "enum": ["Live Webcam", "Specimen Calibration"],
+          "maxLength": 32
+        },
+        "notes": {
+          "type": "string",
+          "description": "Researcher field notes for the scan.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "bookmarked": {
+          "type": "boolean",
+          "description": "Whether the scan log entry is starred by the researcher."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the scan log was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the scan log was last updated."
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "timestamp",
+        "specimenId",
+        "specimenName",
+        "scientificName",
+        "category",
+        "confidence",
+        "chlorophyllSpad",
+        "laminaIntegrity",
+        "audioSpoken",
+        "sourceMode",
+        "notes",
+        "bookmarked",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DailyProgressDoc": {
+      "title": "DailyProgressDoc",
+      "description": "Daily aggregated botanical scanning telemetry and leaf health metrics for a user.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Document identifier combining ownerId and day key.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the user who owns this progress record.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "day": {
+          "type": "string",
+          "description": "Day label (e.g., Mon, Tue, Wed).",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "dateLabel": {
+          "type": "string",
+          "description": "Human-readable date label.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Chronological sort index (0-366)."
+        },
+        "totalScans": {
+          "type": "number",
+          "description": "Total optical scans performed on this day."
+        },
+        "verifiedTriggers": {
+          "type": "number",
+          "description": "Number of scans exceeding the 85% confidence threshold."
+        },
+        "noiseRejected": {
+          "type": "number",
+          "description": "Number of ambient background frames rejected."
+        },
+        "avgConfidence": {
+          "type": "number",
+          "description": "Average neural confidence percentage (0-100)."
+        },
+        "leafHealthIndex": {
+          "type": "number",
+          "description": "Average leaf structural integrity score (0-100)."
+        },
+        "chlorophyllSpad": {
+          "type": "number",
+          "description": "Average chlorophyll SPAD density (0-100)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the record was last updated."
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "day",
+        "dateLabel",
+        "sortOrder",
+        "totalScans",
+        "verifiedTriggers",
+        "noiseRejected",
+        "avgConfidence",
+        "leafHealthIndex",
+        "chlorophyllSpad",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Stores isolated user profile metadata accessible exclusively by the authenticated owner."
+    },
+    "/scanLogs/{scanId}": {
+      "schema": {
+        "$ref": "#/entities/ScanLog"
+      },
+      "description": "Stores verified botanical scan logs and foliar telemetry owned by a specific user."
+    },
+    "/dailyProgress/{progressId}": {
+      "schema": {
+        "$ref": "#/entities/DailyProgressDoc"
+      },
+      "description": "Stores daily scanning progress and leaf health statistics owned by a specific user."
+    }
+  }
+}
