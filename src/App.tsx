@@ -25,6 +25,13 @@ import {
   LogOut,
   Cloud,
   ArrowDown,
+  ExternalLink,
+  Calendar,
+  Sprout,
+  ShieldCheck,
+  RefreshCw,
+  GraduationCap,
+  Bot,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -50,16 +57,22 @@ import {
 } from './data/botanicalData';
 import {
   analyzeCanvasSpectralFeatures,
+  AutoCorrectionReport,
   ClassConfidenceResult,
+  diagnoseLeafDiseaseFromMetrics,
   drawCenterCroppedFrame,
+  FrameSpectralMetrics,
   isTorchSupported,
   loadTeachableMachineModel,
+  performDeepFrameAutoCorrection,
+  PlantDiseaseDiagnosis,
   RawPrediction,
   resetTemporalSmoothing,
   resolveCompetitionPredictions,
   setTorchState,
   TMCustomModel,
   triggerHaptic,
+  verifyLeafWithServerDeepAI,
 } from './services/teachableMachine';
 import { detectQrFromCanvas } from './services/qrScanner';
 import { BotanicalActionCard } from './components/BotanicalActionCard';
@@ -69,6 +82,19 @@ import { SpecimenDetailModal } from './components/SpecimenDetailModal';
 import { BotanicalQrModal } from './components/BotanicalQrModal';
 import { SampleQrTagsModal } from './components/SampleQrTagsModal';
 import { StripeWaveBackground } from './components/StripeWaveBackground';
+import { PlantTriviaPage } from './components/PlantTriviaPage';
+import { FloraFactChatbotPage } from './components/FloraFactChatbotPage';
+import { KnowMoreModal } from './components/KnowMoreModal';
+import { ScannerTelemetryConsole } from './components/ScannerTelemetryConsole';
+import { PWAInstallButton, OfflineIndicator } from './components/PWAInstallAndOfflineBar';
+import {
+  WebsiteReviewBanner,
+  WebsiteReviewModal,
+  InstagramBrandIcon,
+  FacebookBrandIcon,
+  INSTAGRAM_URL,
+  FACEBOOK_URL,
+} from './components/WebsiteReviewModal';
 import { sanitizeText } from './utils/textSanitizer';
 
 export default function App() {
@@ -102,9 +128,10 @@ export default function App() {
   const [inspectingQrSpecimen, setInspectingQrSpecimen] = useState<BotanicalClassProfile | null>(null);
   const [qrModalSpecimen, setQrModalSpecimen] = useState<BotanicalClassProfile | null>(null);
   const [showSampleQrModal, setShowSampleQrModal] = useState<boolean>(false);
-  const [activeNavSection, setActiveNavSection] = useState<'scanner' | 'specimens' | 'impact' | 'analytics'>('scanner');
+  const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
+  const [activeNavSection, setActiveNavSection] = useState<'scanner' | 'specimens' | 'impact' | 'analytics' | 'trivia' | 'chatbot'>('scanner');
 
-  const navigateToPage = (page: 'scanner' | 'specimens' | 'impact' | 'analytics') => {
+  const navigateToPage = (page: 'scanner' | 'specimens' | 'impact' | 'analytics' | 'trivia' | 'chatbot') => {
     setActiveNavSection(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -137,6 +164,25 @@ export default function App() {
     useState<number>(15);
   const [cooldownRemainingSec, setCooldownRemainingSec] = useState<number>(0);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+
+  // "Know More" Webcam Display Button & Sequential Announcement State
+  const [showKnowMorePanel, setShowKnowMorePanel] = useState<boolean>(false);
+  const [isAnnouncingKnowMore, setIsAnnouncingKnowMore] = useState<boolean>(false);
+  const [announcingPlantId, setAnnouncingPlantId] = useState<string | null>(null);
+  const [knowMoreStatusText, setKnowMoreStatusText] = useState<string>('');
+  const knowMoreCancelledRef = useRef<boolean>(false);
+  const knowMoreTimerRef = useRef<number | null>(null);
+
+  // Deep Auto-Correction & Automatic Disease Inspection State
+  const [autoCorrectEnabled, setAutoCorrectEnabled] = useState<boolean>(true);
+  const [autoCorrectionReport, setAutoCorrectionReport] =
+    useState<AutoCorrectionReport | null>(null);
+  const [diseaseDiagnosis, setDiseaseDiagnosis] =
+    useState<PlantDiseaseDiagnosis | null>(null);
+  const [isDeepAnalyzing, setIsDeepAnalyzing] = useState<boolean>(false);
+  const [showDeepAnalysisDetails, setShowDeepAnalysisDetails] =
+    useState<boolean>(false);
+  const [correctionCount, setCorrectionCount] = useState<number>(0);
 
   // Firebase Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -174,6 +220,11 @@ export default function App() {
   const lastLoggedTimeRef = useRef<number>(0);
   const lastTriggeredSpeciesRef = useRef<string | null>(null);
   const lastQrDetectTimeRef = useRef<number>(0);
+  const lastSpectralRef = useRef<FrameSpectralMetrics | null>(null);
+  const lastAutoAuditTimeRef = useRef<number>(0);
+  const lastAutonomousAiTimeRef = useRef<number>(0);
+  const autonomousAiInFlightRef = useRef<boolean>(false);
+  const deepLockUntilRef = useRef<number>(0);
 
   // Listen to Firebase Auth state & attach Firestore listeners when authenticated
   useEffect(() => {
@@ -336,6 +387,26 @@ export default function App() {
     [ttsCooldownSettingSec, stopSpeech]
   );
 
+  const speakDiseaseCure = useCallback(
+    (diagnosis: PlantDiseaseDiagnosis, plantName: string) => {
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const cureText = `${plantName} Health Inspection: ${diagnosis.healthStatus}. Diagnosis: ${diagnosis.diseaseName}. Cause: ${diagnosis.pathogenOrCause}. Recommended Organic Cure: ${diagnosis.organicCure.join(
+        ' Next, '
+      )}. Preventive Care: ${diagnosis.preventiveCare}`;
+      const utterance = new SpeechSynthesisUtterance(cureText);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    },
+    []
+  );
+
   useEffect(() => {
     if (cooldownRemainingSec <= 0) return;
     const timer = window.setInterval(() => {
@@ -343,6 +414,124 @@ export default function App() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [cooldownRemainingSec]);
+
+  const redirectToYoBro = useCallback(() => {
+    const targetUrl = 'https://yobroiamyobro.vercel.app';
+    setKnowMoreStatusText('Redirecting to yobroiamyobro.vercel.app...');
+    try {
+      if (window.top && window.top !== window) {
+        window.top.location.href = targetUrl;
+        return;
+      }
+    } catch {
+      // Cross-origin frame restriction fallback
+    }
+    window.location.href = targetUrl;
+  }, []);
+
+  const stopKnowMoreAnnouncement = useCallback(() => {
+    knowMoreCancelledRef.current = true;
+    if (knowMoreTimerRef.current) {
+      window.clearTimeout(knowMoreTimerRef.current);
+      knowMoreTimerRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsAnnouncingKnowMore(false);
+    setAnnouncingPlantId(null);
+    setIsSpeaking(false);
+    setKnowMoreStatusText('Announcement paused.');
+  }, []);
+
+  const handleKnowMoreClick = useCallback(
+    (currentProfile: BotanicalClassProfile) => {
+      knowMoreCancelledRef.current = false;
+      if (knowMoreTimerRef.current) {
+        globalThis.clearTimeout(knowMoreTimerRef.current);
+        knowMoreTimerRef.current = null;
+      }
+
+      const allPlants = BOTANICAL_CLASSES.filter((p) => p.id !== 'background');
+      const orderedPlants =
+        currentProfile && currentProfile.id !== 'background'
+          ? [
+              currentProfile,
+              ...allPlants.filter((p) => p.id !== currentProfile.id),
+            ]
+          : allPlants;
+
+      setShowKnowMorePanel(true);
+      setIsAnnouncingKnowMore(true);
+
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+        setKnowMoreStatusText(
+          'Displaying plant details... Redirecting to yobroiamyobro.vercel.app'
+        );
+        knowMoreTimerRef.current = globalThis.setTimeout(() => {
+          if (!knowMoreCancelledRef.current) {
+            redirectToYoBro();
+          }
+        }, 6000) as unknown as number;
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+
+      let currentIdx = 0;
+
+      const speakNextPlant = () => {
+        if (knowMoreCancelledRef.current) return;
+
+        if (currentIdx >= orderedPlants.length) {
+          setAnnouncingPlantId(null);
+          setIsAnnouncingKnowMore(false);
+          setIsSpeaking(false);
+          setKnowMoreStatusText(
+            'Finished announcing all plants! Redirecting to yobroiamyobro.vercel.app...'
+          );
+          knowMoreTimerRef.current = globalThis.setTimeout(() => {
+            if (!knowMoreCancelledRef.current) {
+              redirectToYoBro();
+            }
+          }, 800) as unknown as number;
+          return;
+        }
+
+        const plant = orderedPlants[currentIdx];
+        setAnnouncingPlantId(plant.id);
+        setKnowMoreStatusText(
+          `Announcing (${currentIdx + 1}/${orderedPlants.length}): ${plant.name} (${plant.scientificName})...`
+        );
+
+        const script = `${plant.name}. Scientific name: ${plant.scientificName}. Definition: ${plant.summary} Season for growing: ${plant.growingSeason}. Uses: ${plant.traditionalUses.join(', ')}.`;
+        const utterance = new SpeechSynthesisUtterance(script);
+        utterance.rate = 1.05;
+        utterance.pitch = 1.0;
+
+        utterance.onstart = () => {
+          setIsSpeaking(true);
+        };
+
+        utterance.onend = () => {
+          if (knowMoreCancelledRef.current) return;
+          currentIdx += 1;
+          speakNextPlant();
+        };
+
+        utterance.onerror = () => {
+          if (knowMoreCancelledRef.current) return;
+          currentIdx += 1;
+          speakNextPlant();
+        };
+
+        window.speechSynthesis.speak(utterance);
+      };
+
+      speakNextPlant();
+    },
+    [redirectToYoBro]
+  );
 
   // 3. Log Verified >=85% Detections to Dashboard
   const recordVerifiedScan = useCallback(
@@ -558,6 +747,7 @@ export default function App() {
             } else {
               // Real-time Teachable Machine botanical vision inference
               const spectral = analyzeCanvasSpectralFeatures(canvas);
+              lastSpectralRef.current = spectral;
               setSpectralSpad(spectral.chlorophyllSpadEstimate);
               setLaminaHealth(spectral.laminaIntegrityEstimate);
               setVitalityState(spectral.vitalityState);
@@ -576,13 +766,93 @@ export default function App() {
                 }
               }
 
-              const resolved = resolveCompetitionPredictions(
-                raw,
-                spectral,
-                confidenceThreshold
-              );
-              setRawPredictions(resolved.rawPredictions);
-              setCompetitionClasses(resolved.competitionClasses);
+              const now = Date.now();
+              // If a deep auto-correction lock is active, preserve the corrected probabilities
+              if (now < deepLockUntilRef.current) {
+                setRawPredictions(raw);
+              } else {
+                const resolved = resolveCompetitionPredictions(
+                  raw,
+                  spectral,
+                  confidenceThreshold
+                );
+                setRawPredictions(resolved.rawPredictions);
+
+                const isFoliageVisible =
+                  resolved.topClass.id !== 'background' ||
+                  spectral.excessGreenIndex > 6.5;
+
+                // Autonomous Discrepancy Detection, Self-Healing Auto-Correction & Disease Inspection (every ~650ms)
+                if (
+                  autoCorrectEnabled &&
+                  now - lastAutoAuditTimeRef.current > 650 &&
+                  isFoliageVisible
+                ) {
+                  lastAutoAuditTimeRef.current = now;
+                  const deepReport = performDeepFrameAutoCorrection(
+                    canvas,
+                    resolved.competitionClasses,
+                    spectral,
+                    { confidenceThreshold }
+                  );
+                  setAutoCorrectionReport(deepReport);
+                  setDiseaseDiagnosis(deepReport.diseaseDiagnosis);
+
+                  if (deepReport.wasCorrected) {
+                    setCompetitionClasses(
+                      deepReport.correctedCompetitionClasses
+                    );
+                    setCorrectionCount((c) => c + 1);
+                    deepLockUntilRef.current = now + 4200;
+                    triggerHaptic([35, 50, 75]);
+                  } else {
+                    setCompetitionClasses(resolved.competitionClasses);
+                  }
+
+                  // Autonomous Background Multimodal AI Verification & Disease Inspection (every ~5.5s when a leaf is present)
+                  if (
+                    navigator.onLine &&
+                    !autonomousAiInFlightRef.current &&
+                    now - lastAutonomousAiTimeRef.current > 5500
+                  ) {
+                    lastAutonomousAiTimeRef.current = now;
+                    autonomousAiInFlightRef.current = true;
+                    verifyLeafWithServerDeepAI(canvas, deepReport, false)
+                      .then((aiVerifiedReport) => {
+                        if (isCancelled) return;
+                        setAutoCorrectionReport(aiVerifiedReport);
+                        setDiseaseDiagnosis(aiVerifiedReport.diseaseDiagnosis);
+                        if (
+                          aiVerifiedReport.correctedClassId !== 'background'
+                        ) {
+                          setCompetitionClasses(
+                            aiVerifiedReport.correctedCompetitionClasses
+                          );
+                          deepLockUntilRef.current = Date.now() + 5000;
+                          if (
+                            aiVerifiedReport.wasCorrected &&
+                            !deepReport.wasCorrected
+                          ) {
+                            setCorrectionCount((c) => c + 1);
+                          }
+                        }
+                      })
+                      .finally(() => {
+                        autonomousAiInFlightRef.current = false;
+                      });
+                  }
+                } else {
+                  setCompetitionClasses(resolved.competitionClasses);
+                  if (isFoliageVisible) {
+                    setDiseaseDiagnosis(
+                      diagnoseLeafDiseaseFromMetrics(
+                        resolved.topClass.id,
+                        spectral
+                      )
+                    );
+                  }
+                }
+              }
             }
           }
         }
@@ -592,6 +862,7 @@ export default function App() {
         const drawn = drawCenterCroppedFrame(uploadedImageRef.current, canvas);
         if (drawn) {
           const spectral = analyzeCanvasSpectralFeatures(canvas);
+          lastSpectralRef.current = spectral;
           setSpectralSpad(spectral.chlorophyllSpadEstimate);
           setLaminaHealth(spectral.laminaIntegrityEstimate);
           setVitalityState(spectral.vitalityState);
@@ -616,7 +887,50 @@ export default function App() {
             confidenceThreshold
           );
           setRawPredictions(resolved.rawPredictions);
-          setCompetitionClasses(resolved.competitionClasses);
+
+          const deepReport = performDeepFrameAutoCorrection(
+            canvas,
+            resolved.competitionClasses,
+            spectral,
+            { confidenceThreshold }
+          );
+          setAutoCorrectionReport(deepReport);
+          setDiseaseDiagnosis(deepReport.diseaseDiagnosis);
+          setCompetitionClasses(
+            autoCorrectEnabled
+              ? deepReport.correctedCompetitionClasses
+              : resolved.competitionClasses
+          );
+          if (autoCorrectEnabled && deepReport.wasCorrected) {
+            setCorrectionCount((c) => c + 1);
+          }
+
+          // Automatically run server-side Multimodal AI verification + Disease & Cure inspection on uploaded leaf images
+          if (navigator.onLine && !autonomousAiInFlightRef.current) {
+            autonomousAiInFlightRef.current = true;
+            setIsDeepAnalyzing(true);
+            verifyLeafWithServerDeepAI(canvas, deepReport, false)
+              .then((aiVerifiedReport) => {
+                if (isCancelled) return;
+                setAutoCorrectionReport(aiVerifiedReport);
+                setDiseaseDiagnosis(aiVerifiedReport.diseaseDiagnosis);
+                if (autoCorrectEnabled) {
+                  setCompetitionClasses(
+                    aiVerifiedReport.correctedCompetitionClasses
+                  );
+                }
+                if (
+                  aiVerifiedReport.wasCorrected &&
+                  !deepReport.wasCorrected
+                ) {
+                  setCorrectionCount((c) => c + 1);
+                }
+              })
+              .finally(() => {
+                autonomousAiInFlightRef.current = false;
+                setIsDeepAnalyzing(false);
+              });
+          }
         }
       }
     };
@@ -629,7 +943,125 @@ export default function App() {
         window.cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [inputMode, webcamActive, tmModel, uploadedPreviewUrl, isFrozen, scannerMode, detectedQrData]);
+  }, [
+    inputMode,
+    webcamActive,
+    tmModel,
+    uploadedPreviewUrl,
+    isFrozen,
+    scannerMode,
+    detectedQrData,
+    autoCorrectEnabled,
+  ]);
+
+  // Manual or User-Flagged Deep Re-Analysis & Auto-Correction Handler
+  const handleTriggerDeepAutoCorrection = useCallback(
+    async (
+      forceWrongVisualAnswer: boolean = true,
+      preferredOverrideId?: BotanicalClassProfile['id']
+    ) => {
+      const canvas = inferenceCanvasRef.current;
+      if (!canvas) return;
+
+      // Ensure latest frame is drawn if webcam or upload is active
+      if (inputMode === 'webcam' && webcamActive && videoRef.current) {
+        drawCenterCroppedFrame(videoRef.current, canvas);
+      } else if (inputMode === 'upload' && uploadedImageRef.current) {
+        drawCenterCroppedFrame(uploadedImageRef.current, canvas);
+      }
+
+      setIsDeepAnalyzing(true);
+      setShowDeepAnalysisDetails(true);
+      triggerHaptic([40, 60, 90]);
+
+      const spectral =
+        lastSpectralRef.current || analyzeCanvasSpectralFeatures(canvas);
+      lastSpectralRef.current = spectral;
+
+      const localDeepReport = performDeepFrameAutoCorrection(
+        canvas,
+        competitionClasses,
+        spectral,
+        {
+          forceAlternative: forceWrongVisualAnswer && !preferredOverrideId,
+          preferredOverrideId,
+          confidenceThreshold,
+        }
+      );
+
+      // Apply immediate local deep morphological auto-correction & disease report
+      setAutoCorrectionReport(localDeepReport);
+      setDiseaseDiagnosis(localDeepReport.diseaseDiagnosis);
+      setCompetitionClasses(localDeepReport.correctedCompetitionClasses);
+      deepLockUntilRef.current = Date.now() + 8000;
+
+      // Also run server-side Gemini Vision multimodal verification & fusion
+      const finalReport = await verifyLeafWithServerDeepAI(
+        canvas,
+        localDeepReport,
+        forceWrongVisualAnswer
+      );
+
+      setAutoCorrectionReport(finalReport);
+      setDiseaseDiagnosis(finalReport.diseaseDiagnosis);
+      setCompetitionClasses(finalReport.correctedCompetitionClasses);
+      deepLockUntilRef.current = Date.now() + 8000;
+      setIsDeepAnalyzing(false);
+
+      if (finalReport.wasCorrected) {
+        setCorrectionCount((c) => c + 1);
+      }
+
+      const correctedSpec = BOTANICAL_CLASSES.find(
+        (c) => c.id === finalReport.correctedClassId
+      );
+
+      if (
+        correctedSpec &&
+        correctedSpec.id !== 'background' &&
+        ttsEnabled &&
+        typeof window !== 'undefined' &&
+        'speechSynthesis' in window &&
+        !isAnnouncingKnowMore
+      ) {
+        window.speechSynthesis.cancel();
+        const msg = finalReport.wasCorrected
+          ? `Autonomous auto-correction applied. Initial visual result ${finalReport.initialClassName} was overridden. Verified ${correctedSpec.name}, ${correctedSpec.scientificName}, at ${finalReport.correctedConfidence.toFixed(
+              1
+            )} percent confidence. Disease inspection: ${finalReport.diseaseDiagnosis.diseaseName}.`
+          : `Deep analysis verified ${correctedSpec.name} at ${finalReport.correctedConfidence.toFixed(
+              1
+            )} percent confidence. Disease inspection: ${finalReport.diseaseDiagnosis.diseaseName}.`;
+        const utterance = new SpeechSynthesisUtterance(msg);
+        utterance.rate = 1.02;
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+      }
+
+      if (correctedSpec && correctedSpec.id !== 'background') {
+        recordVerifiedScan(
+          correctedSpec,
+          finalReport.correctedConfidence,
+          spectral.chlorophyllSpadEstimate,
+          spectral.laminaIntegrityEstimate,
+          finalReport.wasCorrected
+            ? `Auto-Corrected from ${finalReport.initialClassName} · ${finalReport.diseaseDiagnosis.diseaseName}`
+            : `Deep Verified · ${finalReport.diseaseDiagnosis.diseaseName}`
+        );
+      }
+    },
+    [
+      inputMode,
+      webcamActive,
+      competitionClasses,
+      confidenceThreshold,
+      ttsEnabled,
+      isAnnouncingKnowMore,
+      recordVerifiedScan,
+    ]
+  );
 
   // Top prediction & 85% AI Trigger Gate
   const sortedClasses = [...competitionClasses].sort(
@@ -645,6 +1077,10 @@ export default function App() {
     !isBackgroundOrNoise && topPrediction.confidence >= confidenceThreshold;
 
   useEffect(() => {
+    if (isAnnouncingKnowMore) {
+      return;
+    }
+
     if (isBackgroundOrNoise || !isTriggered) {
       if (isBackgroundOrNoise) {
         stopSpeech();
@@ -663,6 +1099,7 @@ export default function App() {
       laminaHealth
     );
   }, [
+    isAnnouncingKnowMore,
     activeProfile,
     isBackgroundOrNoise,
     isTriggered,
@@ -769,7 +1206,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col bg-[#FAFAFA] text-slate-900 pb-16 md:pb-0">
+    <div className="relative min-h-screen w-full max-w-[100vw] overflow-x-hidden flex flex-col bg-[#FAFAFA] text-slate-900 pb-16 md:pb-0">
       {/* Stripe Flowing Wave Background */}
       <StripeWaveBackground />
 
@@ -806,14 +1243,14 @@ export default function App() {
       />
 
       {/* Header */}
-      <header className="sticky top-0 z-30 h-14 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 flex items-center">
-        <div className="max-w-[1340px] w-full mx-auto flex items-center justify-between gap-3 md:gap-6">
+      <header className="sticky top-0 z-30 h-14 w-full max-w-[100vw] overflow-x-hidden bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-3 sm:px-4 md:px-6 flex items-center">
+        <div className="max-w-[1340px] w-full min-w-0 mx-auto flex items-center justify-between gap-2 sm:gap-3 md:gap-6">
           <button
             type="button"
             onClick={() => navigateToPage('scanner')}
-            className="text-base sm:text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 flex items-center gap-2 cursor-pointer text-left"
+            className="text-sm sm:text-lg font-bold tracking-tight text-slate-900 truncate min-w-0 flex items-center gap-1.5 cursor-pointer text-left"
           >
-            <span>The Green Medic</span>
+            <span className="truncate">The Green Medic</span>
           </button>
 
           {/* Desktop Multi-Page Navigation Tabs */}
@@ -875,12 +1312,76 @@ export default function App() {
                 </span>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => navigateToPage('trivia')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeNavSection === 'trivia'
+                  ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Plant Trivia</span>
+              <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] rounded-full">15</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToPage('chatbot')}
+              className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                activeNavSection === 'chatbot'
+                  ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5 text-emerald-600" />
+              <span>FloraFact Bot</span>
+              <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full font-bold">AI</span>
+            </button>
           </nav>
 
           {/* Auth & Primary Action Controls */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <PWAInstallButton />
+
+            {/* Official Instagram & Facebook Links */}
+            <div className="hidden sm:flex items-center gap-1.5">
+              <a
+                href={INSTAGRAM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[38px] sm:min-h-[40px] px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-pink-50/70 border border-slate-200 hover:border-pink-300 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                title="Follow us on Instagram (@greenmedic.site)"
+                aria-label="Instagram"
+              >
+                <InstagramBrandIcon className="w-4 h-4 shrink-0" />
+                <span className="hidden xl:inline">Instagram</span>
+              </a>
+              <a
+                href={FACEBOOK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[38px] sm:min-h-[40px] px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                title="Follow us on Facebook"
+                aria-label="Facebook"
+              >
+                <FacebookBrandIcon className="w-4 h-4 shrink-0" />
+                <span className="hidden xl:inline">Facebook</span>
+              </a>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowReviewModal(true)}
+              className="min-h-[38px] sm:min-h-[40px] px-2 sm:px-3 py-1.5 text-xs font-medium text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/90 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+              title="Scan QR Code to Submit Website Review"
+            >
+              <QrCode className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="hidden lg:inline">Review QR</span>
+            </button>
+
             {currentUser ? (
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <div
                   className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-xs text-emerald-900"
                   title="Cloud Sync Active"
@@ -893,7 +1394,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="min-h-[40px] px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="min-h-[38px] sm:min-h-[40px] px-2 sm:px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                   title="Sign Out"
                 >
                   <LogOut className="w-3.5 h-3.5 text-slate-500" />
@@ -905,7 +1406,7 @@ export default function App() {
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={authLoading}
-                className="min-h-[40px] px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60"
+                className="min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60"
               >
                 <LogIn className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span className="sm:hidden">{authLoading ? '...' : 'Sign In'}</span>
@@ -919,17 +1420,19 @@ export default function App() {
               <button
                 type="button"
                 onClick={stopWebcam}
-                className="min-h-[40px] px-3 sm:px-4 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-4 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
-                Stop Camera
+                <span className="sm:hidden">Stop</span>
+                <span className="hidden sm:inline">Stop Camera</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => startWebcam()}
-                className="min-h-[40px] px-3 sm:px-4 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-4 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
-                Start Camera
+                <span className="sm:hidden">Camera</span>
+                <span className="hidden sm:inline">Start Camera</span>
               </button>
             )}
           </div>
@@ -937,7 +1440,7 @@ export default function App() {
       </header>
 
       {/* Main Content Container with Multi-Page Views */}
-      <main className="relative z-10 flex-1 max-w-[1340px] w-full mx-auto px-4 md:px-6 py-4 sm:py-6 md:py-8">
+      <main className="relative z-10 flex-1 max-w-[1340px] w-full min-w-0 mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 overflow-x-hidden">
         <AnimatePresence mode="wait">
           {activeNavSection === 'scanner' && (
             <motion.div
@@ -1066,12 +1569,12 @@ export default function App() {
           )}
 
           {/* Split Console (Flows like a river on mobile, 12-col split on desktop) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 lg:gap-6 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 lg:gap-6 items-stretch min-w-0">
             {/* LEFT 5 COLS: Optical Feed & Live Foliar HUD */}
-            <div className="lg:col-span-5 bg-white border border-slate-200/90 rounded-3xl sm:rounded-2xl p-4 sm:p-5 md:p-6 flex flex-col justify-between space-y-5 md:space-y-6 shadow-xs">
-              <div>
-                <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
-                  <span>
+            <div className="lg:col-span-5 min-w-0 w-full overflow-hidden bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 md:p-6 flex flex-col justify-between space-y-4 sm:space-y-5 md:space-y-6 shadow-xs">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-400 mb-3 min-w-0">
+                  <span className="truncate">
                     {scannerMode === 'qr'
                       ? 'QR & Pot Tag Detection'
                       : inputMode === 'webcam' && webcamActive
@@ -1082,7 +1585,7 @@ export default function App() {
                       ? 'Uploaded Leaf'
                       : 'Camera Standby'}
                   </span>
-                  <span className="font-mono tabular-nums text-slate-600">
+                  <span className="font-mono tabular-nums text-slate-600 shrink-0">
                     {scannerMode === 'qr' ? 'Code Reader' : `Threshold: ${confidenceThreshold}%`}
                   </span>
                 </div>
@@ -1268,316 +1771,62 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Mobile Quick Action Bar (Thumb-friendly touch buttons) */}
-                {webcamActive && (
-                  <div className="flex sm:hidden items-center justify-between gap-1.5 pt-3">
-                    <button
-                      type="button"
-                      onClick={toggleFacingMode}
-                      className="flex-1 min-h-[44px] py-2 px-1 text-xs font-medium bg-slate-100 active:bg-slate-200 text-slate-800 rounded-xl flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-transform"
-                    >
-                      <SwitchCamera className="w-4 h-4 text-slate-600" />
-                      <span>Flip</span>
-                    </button>
-                    {torchAvailable && (
-                      <button
-                        type="button"
-                        onClick={toggleTorch}
-                        className={`min-h-[44px] px-2.5 text-xs font-medium rounded-xl flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-transform ${
-                          torchActive ? 'bg-amber-400 text-slate-900' : 'bg-slate-100 text-slate-800'
-                        }`}
-                      >
-                        <Zap className="w-4 h-4" />
-                        <span>{torchActive ? 'On' : 'Flash'}</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={toggleFreezeFrame}
-                      className={`min-h-[44px] px-2.5 text-xs font-medium rounded-xl flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-transform ${
-                        isFrozen ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-800'
-                      }`}
-                    >
-                      {isFrozen ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-                      <span>{isFrozen ? 'Live' : 'Freeze'}</span>
-                    </button>
-                    {scannerMode === 'botanical' ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isTriggered && activeProfile && activeProfile.id !== 'background') {
-                            setInspectingQrSpecimen(activeProfile);
-                          } else {
-                            setShowHealthHudInfo((prev) => !prev);
-                          }
-                        }}
-                        className={`flex-1 min-h-[44px] py-2 px-2 text-xs font-medium rounded-xl flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-transform ${
-                          isTriggered
-                            ? 'bg-emerald-600 active:bg-emerald-700 text-white'
-                            : 'bg-slate-100 text-slate-800'
-                        }`}
-                      >
-                        <BookOpen className="w-4 h-4" />
-                        <span>{isTriggered ? 'Dossier' : 'Metrics'}</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setShowSampleQrModal(true)}
-                        className="flex-1 min-h-[44px] py-2 px-2 text-xs font-medium bg-cyan-600 active:bg-cyan-700 text-white rounded-xl flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-95 transition-transform"
-                      >
-                        <QrCode className="w-4 h-4 text-cyan-200" />
-                        <span>Tags</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Foliar Health Info Dropdown Panel */}
-                <AnimatePresence>
-                  {showHealthHudInfo && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="mt-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs space-y-2 overflow-hidden"
-                    >
-                      <div className="flex items-center justify-between font-semibold text-slate-800">
-                        <span>Foliar Chlorophyll & Vitality Diagnostics</span>
-                        <span className="font-mono text-emerald-700 font-bold">
-                          {laminaHealth.toFixed(1)}% Score
-                        </span>
-                      </div>
-                      <p className="text-slate-600 leading-relaxed text-[11px]">
-                        Extracted via optical chlorophyll ratios and CIVE indices in real time:
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 text-[11px] font-mono pt-1">
-                        <div className="bg-white p-2 rounded-lg border border-slate-100">
-                          <span className="text-slate-400 block">Chlorophyll SPAD</span>
-                          <span className="font-bold text-slate-900">{spectralSpad.toFixed(1)} SPAD</span>
-                        </div>
-                        <div className="bg-white p-2 rounded-lg border border-slate-100">
-                          <span className="text-slate-400 block">Chlorosis (Yellowing)</span>
-                          <span className="font-bold text-slate-900">{chlorosisScore}% index</span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Mode-Specific Telemetry: QR Pot Tag Status OR 5-Class Competition Bars */}
-              {scannerMode === 'qr' ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>Decoded Pot Tag Status</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowSampleQrModal(true)}
-                      className="text-cyan-700 font-medium hover:underline cursor-pointer"
-                    >
-                      Sample Tags
-                    </button>
-                  </div>
-
-                  {detectedQrData ? (
-                    <div className="p-4 bg-cyan-50/70 border border-cyan-200/90 rounded-2xl space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-cyan-900">
-                          <QrCode className="w-4 h-4 text-cyan-600" />
-                          <span>Decoded Pot Marker</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setDetectedQrData(null)}
-                          className="text-[11px] font-mono text-cyan-700 hover:text-cyan-900 cursor-pointer"
-                        >
-                          Clear Tag
-                        </button>
-                      </div>
-
-                      <div className="p-2.5 bg-white rounded-xl border border-cyan-100 font-mono text-xs text-slate-800 break-all select-all shadow-2xs">
-                        {detectedQrData}
-                      </div>
-
-                      {inspectingQrSpecimen && (
-                        <div className="pt-2 flex items-center justify-between gap-2 border-t border-cyan-200/60">
-                          <div className="text-xs">
-                            <span className="font-bold text-slate-900">{inspectingQrSpecimen.name}</span>
-                            <span className="text-slate-400 block text-[11px] italic">{inspectingQrSpecimen.scientificName}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setInspectingQrSpecimen(inspectingQrSpecimen)}
-                            className="min-h-[38px] px-3.5 py-1.5 bg-cyan-700 text-white text-xs font-medium rounded-xl hover:bg-cyan-800 transition-colors shadow-2xs cursor-pointer"
-                          >
-                            Open Dossier
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="p-6 border border-dashed border-slate-200 rounded-2xl text-center space-y-2.5 bg-slate-50/50">
-                      <QrCode className="w-8 h-8 text-cyan-600/70 mx-auto" />
-                      <div className="text-xs font-semibold text-slate-800">Ready to Scan Plant Pot Tag</div>
-                      <p className="text-[11px] text-slate-500 max-w-xs mx-auto leading-relaxed">
-                        Point camera at plant pot QR labels or herbarium tags. Universal decoder runs on your device camera.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setShowSampleQrModal(true)}
-                        className="inline-flex items-center gap-1.5 min-h-[38px] px-3.5 py-1.5 text-xs font-medium text-cyan-800 bg-cyan-50 hover:bg-cyan-100 rounded-xl transition-colors cursor-pointer border border-cyan-200/60"
-                      >
-                        <QrCode className="w-3.5 h-3.5 text-cyan-600" />
-                        <span>View Sample Pot QR Codes</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Liquid Confidence Bars */
-                <div>
-                  <div className="flex items-center justify-between text-xs text-slate-400 mb-3">
-                    <span>5-Class Competition Confidence</span>
-                    <span className="font-mono">85% Trigger Gate</span>
-                  </div>
-
-                <div className="space-y-3">
-                  {competitionClasses.map((cls) => {
-                    const isAboveGate =
-                      cls.id !== 'background' &&
-                      cls.confidence >= confidenceThreshold;
-                    const isBgActive =
-                      cls.id === 'background' &&
-                      cls.confidence >= topPrediction.confidence;
-
-                    return (
-                      <div key={cls.id} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="font-medium text-slate-800">
-                              {cls.name}
-                            </span>
-                            <span className="text-slate-300" aria-hidden="true">
-                              ·
-                            </span>
-                            <span className="text-slate-400">
-                              {cls.category === 'medicinal'
-                                ? 'Medicinal'
-                                : cls.category === 'weed'
-                                ? 'Weed'
-                                : 'Background'}
-                            </span>
-                          </div>
-                          <span
-                            className={`font-mono text-xs font-semibold tabular-nums ${
-                              isAboveGate
-                                ? 'text-emerald-700'
-                                : isBgActive
-                                ? 'text-slate-600'
-                                : 'text-slate-400'
-                            }`}
-                          >
-                            {cls.confidence.toFixed(1)}%
-                          </span>
-                        </div>
-
-                        <div className="relative h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            style={{ left: `${confidenceThreshold}%` }}
-                            className="absolute top-0 bottom-0 w-px bg-slate-300 z-10"
-                            title="85% Trigger Threshold"
-                          />
-                          <motion.div
-                            initial={false}
-                            animate={{
-                              width: `${Math.min(
-                                100,
-                                Math.max(0, cls.confidence)
-                              )}%`,
-                            }}
-                            transition={{
-                              type: 'spring',
-                              stiffness: 140,
-                              damping: 22,
-                              mass: 0.6,
-                            }}
-                            className={`relative h-full rounded-full overflow-hidden ${
-                              cls.id === 'background'
-                                ? 'bg-slate-400'
-                                : cls.category === 'weed'
-                                ? isAboveGate
-                                  ? 'bg-amber-500'
-                                  : 'bg-amber-300'
-                                : isAboveGate
-                                ? 'bg-emerald-600'
-                                : 'bg-slate-400'
-                            }`}
-                          >
-                            {isAboveGate && (
-                              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent liquid-bar-shimmer" />
-                            )}
-                          </motion.div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Minimal Raw Model & Voice Cooldown Footer */}
-              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-                <div className="font-mono text-[11px] flex flex-wrap items-center gap-x-2 gap-y-1">
-                  {rawPredictions.map((p, idx) => (
-                    <span key={p.className} className="whitespace-nowrap">
-                      {idx > 0 ? '· ' : ''}
-                      {p.className}: {(p.probability * 100).toFixed(0)}%
-                    </span>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <label htmlFor="cooldown-select">Cooldown</label>
-                  <select
-                    id="cooldown-select"
-                    value={ttsCooldownSettingSec}
-                    onChange={(e) =>
-                      setTtsCooldownSettingSec(Number(e.target.value))
-                    }
-                    className="bg-slate-50 border border-slate-200 rounded-md px-1.5 py-0.5 font-mono text-[11px] text-slate-700"
+                {/* "Know More" Button at the Bottom of Webcam Display */}
+                <div className="mt-3 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowKnowMorePanel(true)}
+                    className="w-full min-w-0 min-h-[46px] px-3 sm:px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-700 hover:from-emerald-800 hover:to-teal-800 text-white font-semibold text-xs sm:text-sm shadow-xs hover:shadow transition-all flex items-center justify-between gap-2 cursor-pointer active:scale-[0.99]"
                   >
-                    <option value={10}>10s</option>
-                    <option value={15}>15s</option>
-                    <option value={30}>30s</option>
-                  </select>
+                    <div className="flex items-center gap-2 min-w-0 truncate">
+                      <Sprout className="w-4 h-4 text-emerald-200 shrink-0" />
+                      <span className="truncate">Know More</span>
+                      <span className="text-[11px] font-normal text-emerald-100/90 hidden sm:inline truncate">
+                        (Uses · Definition · Growing Season · Scientific Names)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono bg-white/15 px-2.5 py-1 rounded-xl shrink-0">
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                      <span>Announce &amp; Visit</span>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Organized Telemetry Console (Tabbed: Confidence / Auto-Correction / Disease & Cure) */}
+                <div className="mt-4 min-w-0">
+                  <ScannerTelemetryConsole
+                    scannerMode={scannerMode}
+                    competitionClasses={competitionClasses}
+                    confidenceThreshold={confidenceThreshold}
+                    topPrediction={topPrediction}
+                    isTriggered={isTriggered}
+                    isBackgroundOrNoise={isBackgroundOrNoise}
+                    autoCorrectEnabled={autoCorrectEnabled}
+                    setAutoCorrectEnabled={setAutoCorrectEnabled}
+                    autoCorrectionReport={autoCorrectionReport}
+                    correctionCount={correctionCount}
+                    isDeepAnalyzing={isDeepAnalyzing}
+                    onTriggerDeepAutoCorrection={handleTriggerDeepAutoCorrection}
+                    spectralSpad={spectralSpad}
+                    laminaHealth={laminaHealth}
+                    vitalityState={vitalityState}
+                    chlorosisScore={chlorosisScore}
+                    diseaseDiagnosis={diseaseDiagnosis}
+                    detectedQrData={detectedQrData}
+                    inspectingQrSpecimen={inspectingQrSpecimen}
+                    onClearDetectedQr={() => setDetectedQrData(null)}
+                    onOpenSampleQrModal={() => setShowSampleQrModal(true)}
+                    onInspectSpecimen={(specimen) => setInspectingQrSpecimen(specimen)}
+                    rawPredictions={rawPredictions}
+                    ttsCooldownSettingSec={ttsCooldownSettingSec}
+                    setTtsCooldownSettingSec={setTtsCooldownSettingSec}
+                  />
                 </div>
               </div>
-            </div>
-
-            {/* Mobile River Flow Bridge between Scanner and Botanical Dossier */}
-            <div className="lg:hidden flex flex-col items-center py-3" aria-hidden="false">
-              <div className="w-px h-6 bg-gradient-to-b from-slate-200 via-emerald-400 to-emerald-500 river-connector-pulse" />
-              <a
-                href="#active-dossier-card"
-                className={`my-1 min-h-[38px] px-4 py-1.5 rounded-full border text-xs font-medium flex items-center gap-1.5 transition-all shadow-2xs ${
-                  isTriggered && !isBackgroundOrNoise
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-white text-slate-600 border-slate-200/90'
-                }`}
-              >
-                <ArrowDown className="w-3.5 h-3.5 shrink-0" />
-                <span>
-                  {isTriggered && !isBackgroundOrNoise
-                    ? `Verified: ${activeProfile.name} (${topPrediction.confidence.toFixed(1)}%)`
-                    : 'Live Botanical Dossier Flow'}
-                </span>
-              </a>
-              <div className="w-px h-5 bg-gradient-to-b from-emerald-500 to-slate-200" />
             </div>
 
             {/* RIGHT 7 COLS: Action Card */}
-            <div id="active-dossier-card" className="lg:col-span-7 scroll-mt-16">
+            <div id="active-dossier-card" className="lg:col-span-7 min-w-0 w-full scroll-mt-16">
               <BotanicalActionCard
                 activeProfile={activeProfile}
                 confidence={topPrediction.confidence}
@@ -1587,7 +1836,10 @@ export default function App() {
                 isSpeaking={isSpeaking}
                 cooldownRemainingSec={cooldownRemainingSec}
                 ttsEnabled={ttsEnabled}
+                diseaseDiagnosis={diseaseDiagnosis}
+                autoCorrectionReport={autoCorrectionReport}
                 onSpeakNow={(profile) => speakProfile(profile, true)}
+                onSpeakDiseaseCure={speakDiseaseCure}
                 onStopSpeech={stopSpeech}
               />
             </div>
@@ -1597,10 +1849,25 @@ export default function App() {
         {/* Quick Multi-Page Jumper from Scanner */}
         <div className="p-4 sm:p-5 bg-white/80 border border-slate-200/80 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-2xs">
           <div className="text-slate-600 text-center sm:text-left">
-            <span className="font-semibold text-slate-800">Need plant reference dossiers or historical logs?</span>
+            <span className="font-semibold text-slate-800">Need plant reference dossiers, trivia, or botanical AI chat?</span>
             <span className="hidden sm:inline text-slate-400 ml-1">Explore individual pages without clutter:</span>
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => navigateToPage('chatbot')}
+              className="flex-1 sm:flex-initial min-h-[38px] px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5 shadow-2xs"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>FloraFact AI Bot →</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToPage('trivia')}
+              className="flex-1 sm:flex-initial min-h-[38px] px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200/80 font-semibold rounded-xl transition-colors cursor-pointer text-center"
+            >
+              Student Plant Trivia (15 Qs) →
+            </button>
             <button
               type="button"
               onClick={() => navigateToPage('specimens')}
@@ -1675,20 +1942,56 @@ export default function App() {
         />
       </motion.div>
     )}
+
+    {/* PAGE 05: Student Botany & Plant Science 15-Question Trivia */}
+    {activeNavSection === 'trivia' && (
+      <motion.div
+        key="trivia-page"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18 }}
+      >
+        <PlantTriviaPage
+          onNavigateToScanner={() => navigateToPage('scanner')}
+          ttsEnabled={ttsEnabled}
+        />
+      </motion.div>
+    )}
+
+    {/* PAGE 06: FloraFact Botanical AI Chatbot (Jotform Agent) */}
+    {activeNavSection === 'chatbot' && (
+      <motion.div
+        key="chatbot-page"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18 }}
+      >
+        <FloraFactChatbotPage
+          onNavigateToScanner={() => navigateToPage('scanner')}
+        />
+      </motion.div>
+    )}
   </AnimatePresence>
+
+  {/* Official TECHNO Blazers Website Review QR Code Section */}
+  <div className="mt-8">
+    <WebsiteReviewBanner onOpenReviewModal={() => setShowReviewModal(true)} />
+  </div>
 </main>
 
       {/* Footer */}
-      <footer className="relative z-10 bg-white/85 backdrop-blur-md border-t border-slate-200/80 px-4 md:px-6 py-6 mt-10 pb-22 md:pb-6">
+      <footer className="relative z-10 bg-white/85 backdrop-blur-md border-t border-slate-200/80 px-4 md:px-6 py-6 mt-6 pb-22 md:pb-6">
         <div className="max-w-[1340px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 text-center sm:text-left">
           <div>
             <span>The Green Medic</span>
             <span className="mx-2" aria-hidden="true">·</span>
-            <span>8th-Grade Science Competition Project</span>
+            <span>TECHNO Blazers</span>
             <span className="mx-2" aria-hidden="true">·</span>
-            <span>Model oaqtjokUw</span>
+            <span>Offline-Ready PWA</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-4">
             <button
               type="button"
               onClick={() => navigateToPage('scanner')}
@@ -1720,6 +2023,52 @@ export default function App() {
             >
               Analytics
             </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => navigateToPage('trivia')}
+              className={`hover:text-slate-900 cursor-pointer ${activeNavSection === 'trivia' ? 'text-emerald-700 font-semibold' : ''}`}
+            >
+              Plant Trivia (15)
+            </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => navigateToPage('chatbot')}
+              className={`hover:text-slate-900 cursor-pointer ${activeNavSection === 'chatbot' ? 'text-emerald-700 font-semibold' : ''}`}
+            >
+              FloraFact Bot
+            </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => setShowReviewModal(true)}
+              className="hover:text-emerald-700 font-medium text-emerald-700 cursor-pointer"
+            >
+              Submit Review (QR)
+            </button>
+            <span aria-hidden="true">·</span>
+            <a
+              href={INSTAGRAM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-slate-700 hover:text-pink-600 font-semibold transition-colors"
+              title="Follow @greenmedic.site on Instagram"
+            >
+              <InstagramBrandIcon className="w-4 h-4 shrink-0" />
+              <span>Instagram</span>
+            </a>
+            <span aria-hidden="true">·</span>
+            <a
+              href={FACEBOOK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-slate-700 hover:text-blue-600 font-semibold transition-colors"
+              title="Visit The Green Medic on Facebook"
+            >
+              <FacebookBrandIcon className="w-4 h-4 shrink-0" />
+              <span>Facebook</span>
+            </a>
           </div>
         </div>
       </footer>
@@ -1727,7 +2076,7 @@ export default function App() {
       {/* Mobile Bottom Tab Bar (Thumb-Zone Multi-Page Navigation) */}
       <nav
         aria-label="Mobile Bottom Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 h-14 grid grid-cols-4 items-center px-2 shadow-lg"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 h-14 grid grid-cols-6 items-center px-1 shadow-lg"
       >
         <button
           type="button"
@@ -1739,7 +2088,7 @@ export default function App() {
           }`}
         >
           <Camera className="w-4 h-4" />
-          <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
+          <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap">
             Scanner
           </span>
         </button>
@@ -1753,10 +2102,10 @@ export default function App() {
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
+          <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap">
             Species
           </span>
-          <span className="absolute top-1 right-3 text-[9px] px-1 py-0.1 bg-emerald-100 text-emerald-800 rounded-full font-mono">
+          <span className="absolute top-1 right-1 text-[8px] px-1 py-0.1 bg-emerald-100 text-emerald-800 rounded-full font-mono">
             5
           </span>
         </button>
@@ -1770,7 +2119,7 @@ export default function App() {
           }`}
         >
           <Globe className="w-4 h-4" />
-          <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
+          <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap">
             Impact
           </span>
         </button>
@@ -1784,16 +2133,91 @@ export default function App() {
           }`}
         >
           <BarChart3 className="w-4 h-4" />
-          <span className="text-[10px] tracking-tight mt-0.5 whitespace-nowrap">
+          <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap">
             History
           </span>
           {scanLogs.length > 0 && (
-            <span className="absolute top-1 right-3 text-[9px] px-1 py-0.1 bg-slate-200 text-slate-800 rounded-full font-mono">
+            <span className="absolute top-1 right-1 text-[8px] px-1 py-0.1 bg-slate-200 text-slate-800 rounded-full font-mono">
               {scanLogs.length}
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={() => navigateToPage('trivia')}
+          className={`relative flex flex-col items-center justify-center min-h-[44px] rounded-xl transition-all cursor-pointer ${
+            activeNavSection === 'trivia'
+              ? 'text-emerald-700 font-bold'
+              : 'text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <GraduationCap className="w-4 h-4" />
+          <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap">
+            Trivia
+          </span>
+          <span className="absolute top-1 right-1 text-[8px] px-1 py-0.1 bg-emerald-100 text-emerald-800 rounded-full font-mono">
+            15
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigateToPage('chatbot')}
+          className={`relative flex flex-col items-center justify-center min-h-[44px] rounded-xl transition-all cursor-pointer ${
+            activeNavSection === 'chatbot'
+              ? 'text-emerald-700 font-bold'
+              : 'text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <Bot className="w-4 h-4" />
+          <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap">
+            AI Bot
+          </span>
+          <span className="absolute top-1 right-1 text-[8px] px-1 py-0.1 bg-emerald-600 text-white rounded-full font-bold">
+            AI
+          </span>
+        </button>
       </nav>
+
+      {/* Know More Modal Dialog (Voice Announcement & Redirection) */}
+      <KnowMoreModal
+        isOpen={showKnowMorePanel}
+        onClose={() => setShowKnowMorePanel(false)}
+        initialSpecimen={activeProfile}
+        ttsEnabled={ttsEnabled}
+      />
+
+      {/* Specimen Detail Modal */}
+      <SpecimenDetailModal
+        specimen={inspectingQrSpecimen}
+        isOpen={Boolean(inspectingQrSpecimen)}
+        onClose={() => setInspectingQrSpecimen(null)}
+        onSpeak={(profile) => speakProfile(profile, true)}
+        onOpenQr={(profile) => setQrModalSpecimen(profile)}
+      />
+
+      {/* Botanical QR Code Modal */}
+      <BotanicalQrModal
+        specimen={qrModalSpecimen}
+        isOpen={Boolean(qrModalSpecimen)}
+        onClose={() => setQrModalSpecimen(null)}
+        onSelectForInspection={(profile) => setInspectingQrSpecimen(profile)}
+      />
+
+      {/* Sample QR Tags Modal */}
+      <SampleQrTagsModal
+        isOpen={showSampleQrModal}
+        onClose={() => setShowSampleQrModal(false)}
+        onSelectSpecimen={(profile) => setInspectingQrSpecimen(profile)}
+      />
+
+      {/* Website Review QR Code & Feedback Modal */}
+      <WebsiteReviewModal
+        isOpen={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+      />
+
+      {/* Offline Status Indicator */}
+      <OfflineIndicator />
     </div>
   );
 }

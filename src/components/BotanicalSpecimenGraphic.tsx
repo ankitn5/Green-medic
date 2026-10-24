@@ -163,29 +163,47 @@ export const BotanicalSpecimenGraphic: React.FC<BotanicalSpecimenGraphicProps> =
         <svg
           viewBox="0 0 240 180"
           className="relative z-10 w-4/5 h-4/5"
-          aria-label="Common invasive weed deeply incised runcinate leaf illustration"
+          aria-label="Digitaria sanguinalis (Crabgrass) linear grass blades and digitate spikelets illustration"
         >
-          {/* Taproot crown & basal stem */}
-          <path d="M120 166 L120 138" stroke="#689F38" strokeWidth="5" />
-          {/* Deeply incised runcinate/pinnatifid weed leaf lobes */}
+          {/* Basal node-rooting crown */}
+          <path d="M120 166 L120 132" stroke="#689F38" strokeWidth="4.5" strokeLinecap="round" />
+          {/* Spreading linear-lanceolate C4 grass blades */}
           <path
-            d="M120 20 L142 42 L126 52 L162 68 L132 82 L168 102 L130 114 L152 132 L120 140 L88 132 L110 114 L72 102 L108 82 L78 68 L114 52 L98 42 Z"
+            d="M120 142 C100 112 72 88 46 74 C76 80 104 102 120 130 Z"
             fill="#558B2F"
             stroke="#33691E"
-            strokeWidth="2"
+            strokeWidth="1.8"
           />
-          {/* Irregular midrib */}
           <path
-            d="M120 24 L120 138"
+            d="M120 142 C140 112 168 88 194 74 C164 80 136 102 120 130 Z"
+            fill="#558B2F"
+            stroke="#33691E"
+            strokeWidth="1.8"
+          />
+          <path
+            d="M120 124 C104 92 84 62 64 42 C88 54 108 82 120 112 Z"
+            fill="#689F38"
+            stroke="#33691E"
+            strokeWidth="1.8"
+          />
+          <path
+            d="M120 124 C136 92 156 62 176 42 C152 54 132 82 120 112 Z"
+            fill="#689F38"
+            stroke="#33691E"
+            strokeWidth="1.8"
+          />
+          {/* Central culm and characteristic finger-like digitate spikelets of Crabgrass */}
+          <path
+            d="M120 134 L120 56"
             stroke="#DCE775"
-            strokeWidth="2.4"
+            strokeWidth="2.6"
             strokeLinecap="round"
           />
-          {/* Secondary lobe veins */}
           <path
-            d="M120 50 L152 66 M120 80 L158 100 M120 112 L144 128 M120 50 L88 66 M120 80 L82 100 M120 112 L96 128"
-            stroke="#C5E1A5"
-            strokeWidth="1.4"
+            d="M120 58 L92 22 M120 58 L108 18 M120 58 L132 18 M120 58 L148 22"
+            stroke="#9E9D24"
+            strokeWidth="2.4"
+            strokeLinecap="round"
           />
         </svg>
       )}

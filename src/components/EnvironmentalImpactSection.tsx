@@ -323,7 +323,7 @@ export const EnvironmentalImpactSection: React.FC<
                 Eliminating Blanket Chemical Spraying
               </h3>
               <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">
-                By isolating competitive weeds such as <em>Parthenium</em> and <em>Taraxacum</em> from medicinal herbs at ≥85% confidence, growers can mechanically uproot invasive weeds before seed dispersal—keeping synthetic herbicides out of groundwater and protecting beneficial soil mycorrhizae.
+                By isolating competitive weeds such as <strong>Crabgrass</strong> (<em>Digitaria sanguinalis</em>) from medicinal herbs at ≥85% confidence, growers can mechanically uproot invasive grass crowns before seed dispersal—keeping synthetic herbicides out of groundwater and protecting beneficial soil mycorrhizae.
               </p>
             </div>
 

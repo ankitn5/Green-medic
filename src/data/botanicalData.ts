@@ -26,6 +26,7 @@ export interface BotanicalClassProfile {
   classificationCode: string;
   summary: string;
   speechScript: string;
+  growingSeason: string;
   optimalHarvestTime: string;
   contraindications: string[];
   traditionalUses: string[];
@@ -57,7 +58,7 @@ export interface BotanicalClassProfile {
 }
 
 export const TEACHABLE_MACHINE_MODEL_URL =
-  'https://teachablemachine.withgoogle.com/models/oaqtjokUw/';
+  'https://teachablemachine.withgoogle.com/models/G0kXRI8vn/';
 
 export const BOTANICAL_CLASSES: BotanicalClassProfile[] = [
   {
@@ -73,6 +74,7 @@ export const BOTANICAL_CLASSES: BotanicalClassProfile[] = [
       'Adaptogenic aromatic subshrub prized in clinical phytomedicine for respiratory immunomodulation, antimicrobial defense, and cortisol regulation.',
     speechScript:
       'Identified Tulsi, or Holy Basil, with high confidence. Health benefits include respiratory support, antimicrobial defense via eugenol compounds, and stress reduction as a natural adaptogen.',
+    growingSeason: 'Spring to Early Autumn (March–October); thrives in warm, sunny tropical and subtropical climates (20°C–35°C)',
     optimalHarvestTime: 'Early morning after dew dries, before mid-day sun degrades volatile oils',
     traditionalUses: [
       'Ayurvedic sovereign adaptogen for prana (vital breath)',
@@ -168,6 +170,7 @@ export const BOTANICAL_CLASSES: BotanicalClassProfile[] = [
       'Bioactive limonoid-rich foliage renowned for dermatological antisepsis, oral microbiome balance, and biodegradable agricultural pest deterrence.',
     speechScript:
       'Identified Neem leaf with high confidence. Health benefits include potent antibacterial skin protection, antifungal activity from nimbidin compounds, and natural dental hygiene support.',
+    growingSeason: 'Summer & Monsoon Season (March–September); drought-hardy perennial thriving in warm arid and semi-arid regions',
     optimalHarvestTime: 'Mid-summer mature leaves, harvested during dry afternoons',
     traditionalUses: [
       'Topical dermal wash for minor abrasions and blemishes',
@@ -263,6 +266,7 @@ export const BOTANICAL_CLASSES: BotanicalClassProfile[] = [
       'Menthol-rich aromatic leaf that activates cold-sensitive TRPM8 receptors to soothe gastrointestinal smooth muscle spasms and tension headaches.',
     speechScript:
       'Identified Peppermint leaf with high confidence. Health benefits include soothing digestive spasms, relieving sinus congestion via natural menthol, and easing tension headaches.',
+    growingSeason: 'Cool Spring & Autumn (February–May and September–November); prefers moist, partially shaded loamy soil (15°C–25°C)',
     optimalHarvestTime: 'Sunny morning just as flower buds begin to appear (peak menthol concentration)',
     traditionalUses: [
       'Soothing carminative tea post-meals for digestion',
@@ -347,80 +351,81 @@ export const BOTANICAL_CLASSES: BotanicalClassProfile[] = [
   },
   {
     id: 'weed',
-    name: 'Common Weed (False Ragweed / Dandelion)',
-    commonAliases: ['weed', 'common weed', 'dandelion', 'parthenium', 'ragweed', 'grass', 'invasive'],
-    scientificName: 'Parthenium hysterophorus / Taraxacum',
-    botanicalOrder: 'Asterales',
-    family: 'Asteraceae',
+    name: 'Crabgrass (Common Weed)',
+    commonAliases: ['crabgrass', 'crab grass', 'digitaria', 'weed', 'common weed', 'grass', 'invasive'],
+    scientificName: 'Digitaria sanguinalis',
+    botanicalOrder: 'Poales',
+    family: 'Poaceae',
     category: 'weed',
     classificationCode: 'SPEC-WED-04',
     summary:
-      'Opportunistic ruderal weed species that competes aggressively with medicinal crops for soil nitrogen and moisture; requires targeted mechanical removal rather than blanket herbicide spraying.',
+      'Aggressive warm-season C4 annual grass weed with prostrate, node-rooting stems and finger-like digitate spikelets that competes heavily with medicinal crops for soil nitrogen and moisture; requires targeted mechanical crown removal rather than blanket herbicide spraying.',
     speechScript:
-      'Alert: Identified Common Weed with high confidence. This specimen is a competitive weed rather than a primary medicinal leaf. Recommend targeted manual uprooting before seed dispersal to avoid chemical herbicides.',
-    optimalHarvestTime: 'Uproot immediately before inflorescence (flowering) appears to prevent seed propagation',
+      'Alert: Identified Crabgrass, a common invasive grass weed, with high confidence. This specimen is a competitive weed rather than a primary medicinal leaf. Recommend targeted manual crown uprooting before finger-like seed spikes mature to avoid chemical herbicides.',
+    growingSeason: 'Late Spring through Autumn (May–October); C4 warm-season annual grass germinating when soil temperatures exceed 13°C (55°F)',
+    optimalHarvestTime: 'Uproot mechanically in early tillering stage before prostrate stems root at nodes or produce digitate seed spikes',
     traditionalUses: [
-      'Early spring young leaves of Taraxacum traditionally consumed as bitter greens (if verified non-parthenium)',
-      'Pre-bloom vegetative matter composted for potassium-rich soil amendment'
+      'Pre-seed vegetative grass blades composted for carbon-nitrogen soil mulch',
+      'Rapid ground-cover stabilizer on eroded embankments when kept away from herb beds'
     ],
     contraindications: [
-      'Do not consume if Parthenium or unknown Asteraceae suspected—risk of severe contact dermatitis and allergic rhinitis',
-      'Always wear protective gloves when uprooting'
+      'Not a primary therapeutic herb—do not substitute for medicinal Lamiaceae or Meliaceae foliage',
+      'Do not compost once finger-like digitate seed heads appear, as a single plant sheds up to 150,000 viable seeds'
     ],
     recipes: [
       {
-        name: 'Targeted Mechanical Uprooting Protocol',
+        name: 'Targeted Mechanical Crown & Node Uprooting Protocol',
         type: 'Non-Chemical Weeding',
-        dosage: 'Repeat weekly during early growing season',
+        dosage: 'Repeat weekly during warm growing season',
         steps: [
-          'Inspect soil moisture; weeding is most effective after light rain or irrigation.',
-          'Grasp the weed firmly at the crown (soil line) wearing latex or gardening gloves.',
-          'Apply steady vertical leverage to extract the complete taproot intact.',
-          'Deposit in a designated solarization bin or hot compost pile away from medicinal beds.'
+          'Inspect soil moisture; extracting crabgrass crowns is easiest after light rain or irrigation.',
+          'Locate the central basal crown where prostrate radiating stems (culms) meet at the soil line.',
+          'Use a hand weeder or gloved grip to lift the central crown and any node-rooted stolons intact.',
+          'Mulch bare soil patches with 5 cm organic bark or straw to block light required for crabgrass seed germination.'
         ],
-        precautions: 'Do not compost if flowers or seed achenes have developed.'
+        precautions: 'Bag and solarize plants if finger-like digitate seed spikes have already emerged.'
       }
     ],
     healthBenefits: [
       {
-        title: 'Taxonomic Look-Alike Warning (Safety Filter)',
-        mechanism: 'Prevents accidental harvesting of allergenic Asteraceae weeds containing sesquiterpene lactones.',
-        clinicalNote: 'Parthenin compounds in invasive weeds can trigger contact dermatitis if confused with herbs.'
+        title: 'Taxonomic Weed Separation (Crop Protection Filter)',
+        mechanism: 'Distinguishes parallel-veined Poaceae grass blades from dicotyledonous medicinal herbs in real time.',
+        clinicalNote: 'Prevents accidental harvesting of non-medicinal turf and field weeds during foraging.'
       },
       {
         title: 'Targeted Non-Chemical Weed Management',
-        mechanism: 'Early optical detection enables spot-weeding by root extraction prior to achene seed set.',
-        clinicalNote: 'Eliminates 100% of glyphosate runoff in school and community medicinal gardens.'
+        mechanism: 'Early optical detection enables manual crown extraction before C4 tillering and spikelet seed set.',
+        clinicalNote: 'Eliminates 100% of synthetic herbicide runoff in school and community medicinal gardens.'
       },
       {
-        title: 'Soil Compaction Bio-Indicator',
-        mechanism: 'Deep taproot proliferation signals calcium-depleted or compacted topsoil layers.',
-        clinicalNote: 'Compost uprooted vegetative matter (before flowering) to recycle potassium.'
+        title: 'Soil Bare-Patch & Compaction Bio-Indicator',
+        mechanism: 'Crabgrass proliferation signals thin mulch cover, high surface soil temperature, and nitrogen competition.',
+        clinicalNote: 'Compost pre-flowering vegetative clippings to recycle organic matter safely.'
       }
     ],
     preparationMethod:
-      'DO NOT BREW OR CONSUME if Partheniinae/Ragweed suspected. Wear gardening gloves and extract taproot cleanly while soil is moist.',
+      'DO NOT BREW FOR MEDICINAL TEA. Wear gardening gloves and extract the central basal crown and node-rooted culms cleanly while soil is moist.',
     safetyAndEcologicalNote:
       'Precision AI identification prevents blanket herbicide spraying, protecting surrounding medicinal plants and soil mycorrhizal fungi.',
     leafMorphology: {
-      venation: 'Irregular runcinate',
-      margin: 'Deeply incised / Pinnatifid',
-      arrangement: 'Basal rosette',
-      chlorophyllIndex: '36.2 SPAD',
-      petioleType: 'Winged, sessile or semi-amplexicaul'
+      venation: 'Parallel-striate (C4 Kranz anatomy)',
+      margin: 'Linear-lanceolate, scabrous (rough-edged) blade with pilose hairs',
+      arrangement: 'Alternate distichous along prostrate decumbent culms',
+      chlorophyllIndex: '36.8 SPAD',
+      petioleType: 'Sessile blade with membranous ligule & hairy sheath'
     },
     radarMetrics: [
-      { axis: 'ANTIMICROBIAL', value: 24 },
+      { axis: 'ANTIMICROBIAL', value: 20 },
       { axis: 'ANTI-INFLAMMATORY', value: 18 },
-      { axis: 'ANTIOXIDANT', value: 35 },
-      { axis: 'RESPIRATORY', value: 12 },
-      { axis: 'DERMAL REPAIR', value: 15 },
-      { axis: 'DIGESTIVE', value: 28 }
+      { axis: 'ANTIOXIDANT', value: 32 },
+      { axis: 'RESPIRATORY', value: 10 },
+      { axis: 'DERMAL REPAIR', value: 14 },
+      { axis: 'DIGESTIVE', value: 22 }
     ],
     activeCompounds: [
-      { compound: 'Sesquiterpene Lactones', concentrationMgG: 8.9, bioactivityScore: 30, role: 'Bitter defensive metabolite (potential allergen)' },
-      { compound: 'Taraxasterol', concentrationMgG: 3.1, bioactivityScore: 42, role: 'Phytosterol triterpene' },
-      { compound: 'Phenolic Acids', concentrationMgG: 4.5, bioactivityScore: 48, role: 'Allelopathic root exudate' }
+      { compound: 'Tricin (Flavone)', concentrationMgG: 4.8, bioactivityScore: 34, role: 'Poaceae allelopathic & UV-protective flavone' },
+      { compound: 'p-Coumaric & Ferulic Acids', concentrationMgG: 6.2, bioactivityScore: 40, role: 'Cell-wall phenolic allelochemicals' },
+      { compound: 'Biogenic Silica (Phytoliths)', concentrationMgG: 14.5, bioactivityScore: 28, role: 'Epidermal structural defense' }
     ],
     colorSignature: {
       primaryHex: '#558B2F',
@@ -440,6 +445,7 @@ export const BOTANICAL_CLASSES: BotanicalClassProfile[] = [
     summary:
       'Ambient background, human hands, classroom surfaces, or unfocused optical noise. All AI triggers and audio synthesis are strictly suppressed.',
     speechScript: '',
+    growingSeason: 'N/A',
     optimalHarvestTime: 'N/A',
     traditionalUses: [],
     contraindications: [],
@@ -606,15 +612,15 @@ export const INITIAL_SCAN_LOGS: ScanLogEntry[] = [
     id: 'SCAN-1046',
     timestamp: '09:09:03',
     specimenId: 'weed',
-    specimenName: 'Common Weed (False Ragweed / Dandelion)',
-    scientificName: 'Parthenium hysterophorus / Taraxacum',
+    specimenName: 'Crabgrass (Common Weed)',
+    scientificName: 'Digitaria sanguinalis',
     category: 'weed',
     confidence: 88.9,
-    chlorophyllSpad: 35.8,
+    chlorophyllSpad: 36.8,
     laminaIntegrity: 89.2,
     audioSpoken: true,
     sourceMode: 'Live Webcam',
-    notes: 'Uprooted manually prior to seed dispersal.',
+    notes: 'Prostrate C4 grass crown uprooted manually prior to spikelet seed dispersal.',
     bookmarked: false
   },
   {
